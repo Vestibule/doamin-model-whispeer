@@ -676,69 +676,471 @@ Un système de bibliothèque simple:
         
         Ok(())
     }
+    
+    #[test]
+    fn emit_mermaid_er_symbols() {
+        // Test 1-1 relationship: ||--|| 
+        let model_1_1 = DomainModel {
+            entities: vec![
+                Entity {
+                    id: "User".to_string(),
+                    name: "User".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+                Entity {
+                    id: "Profile".to_string(),
+                    name: "Profile".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+            ],
+            relations: vec![Relation {
+                id: "user_profile".to_string(),
+                name: "has_profile".to_string(),
+                description: None,
+                from: RelationEnd {
+                    entity_id: "User".to_string(),
+                    label: None,
+                },
+                to: RelationEnd {
+                    entity_id: "Profile".to_string(),
+                    label: None,
+                },
+                cardinality: Cardinality {
+                    from: "1".to_string(),
+                    to: "1".to_string(),
+                },
+            }],
+            invariants: vec![],
+        };
+
+        let result = emit_mermaid(&model_1_1, Some("er")).unwrap();
+        let mermaid = result.get("mermaid").unwrap().as_str().unwrap();
+        println!("1-1 relation:\n{}", mermaid);
+        assert!(mermaid.contains("||--||"), "Should contain ||--|| for 1-1 relation");
+
+        // Test 1-N relationship: ||--o{
+        let model_1_n = DomainModel {
+            entities: vec![
+                Entity {
+                    id: "Author".to_string(),
+                    name: "Author".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+                Entity {
+                    id: "Article".to_string(),
+                    name: "Article".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+            ],
+            relations: vec![Relation {
+                id: "author_articles".to_string(),
+                name: "writes".to_string(),
+                description: None,
+                from: RelationEnd {
+                    entity_id: "Author".to_string(),
+                    label: None,
+                },
+                to: RelationEnd {
+                    entity_id: "Article".to_string(),
+                    label: None,
+                },
+                cardinality: Cardinality {
+                    from: "1".to_string(),
+                    to: "0..n".to_string(),
+                },
+            }],
+            invariants: vec![],
+        };
+
+        let result = emit_mermaid(&model_1_n, Some("er")).unwrap();
+        let mermaid = result.get("mermaid").unwrap().as_str().unwrap();
+        println!("1-N relation:\n{}", mermaid);
+        assert!(mermaid.contains("||--o{"), "Should contain ||--o{{ for 1-N relation");
+
+        // Test N-1 relationship: }o--||
+        let model_n_1 = DomainModel {
+            entities: vec![
+                Entity {
+                    id: "Order".to_string(),
+                    name: "Order".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+                Entity {
+                    id: "Customer".to_string(),
+                    name: "Customer".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+            ],
+            relations: vec![Relation {
+                id: "order_customer".to_string(),
+                name: "belongs_to".to_string(),
+                description: None,
+                from: RelationEnd {
+                    entity_id: "Order".to_string(),
+                    label: None,
+                },
+                to: RelationEnd {
+                    entity_id: "Customer".to_string(),
+                    label: None,
+                },
+                cardinality: Cardinality {
+                    from: "0..n".to_string(),
+                    to: "1".to_string(),
+                },
+            }],
+            invariants: vec![],
+        };
+
+        let result = emit_mermaid(&model_n_1, Some("er")).unwrap();
+        let mermaid = result.get("mermaid").unwrap().as_str().unwrap();
+        println!("N-1 relation:\n{}", mermaid);
+        assert!(mermaid.contains("}o--||"), "Should contain }}o--|| for N-1 relation");
+
+        // Test N-N relationship: }o--o{
+        let model_n_n = DomainModel {
+            entities: vec![
+                Entity {
+                    id: "Student".to_string(),
+                    name: "Student".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+                Entity {
+                    id: "Course".to_string(),
+                    name: "Course".to_string(),
+                    description: None,
+                    attributes: vec![],
+                    primary_key: None,
+                },
+            ],
+            relations: vec![Relation {
+                id: "student_courses".to_string(),
+                name: "enrolls_in".to_string(),
+                description: None,
+                from: RelationEnd {
+                    entity_id: "Student".to_string(),
+                    label: None,
+                },
+                to: RelationEnd {
+                    entity_id: "Course".to_string(),
+                    label: None,
+                },
+                cardinality: Cardinality {
+                    from: "0..n".to_string(),
+                    to: "0..n".to_string(),
+                },
+            }],
+            invariants: vec![],
+        };
+
+        let result = emit_mermaid(&model_n_n, Some("er")).unwrap();
+        let mermaid = result.get("mermaid").unwrap().as_str().unwrap();
+        println!("N-N relation:\n{}", mermaid);
+        assert!(mermaid.contains("}o--o{"), "Should contain }}o--o{{ for N-N relation");
+    }
+    
+    #[test]
+    fn emit_markdown_sections() {
+        // Build a comprehensive domain model
+        let model = DomainModel {
+            entities: vec![
+                Entity {
+                    id: "User".to_string(),
+                    name: "User".to_string(),
+                    description: Some("Utilisateur du système".to_string()),
+                    attributes: vec![
+                        Attribute {
+                            name: "id".to_string(),
+                            attr_type: "uuid".to_string(),
+                            description: Some("Identifiant unique".to_string()),
+                            required: Some(true),
+                            unique: Some(true),
+                        },
+                        Attribute {
+                            name: "email".to_string(),
+                            attr_type: "email".to_string(),
+                            description: Some("Adresse email".to_string()),
+                            required: Some(true),
+                            unique: Some(true),
+                        },
+                        Attribute {
+                            name: "name".to_string(),
+                            attr_type: "string".to_string(),
+                            description: None,
+                            required: Some(true),
+                            unique: Some(false),
+                        },
+                    ],
+                    primary_key: Some(vec!["id".to_string()]),
+                },
+                Entity {
+                    id: "Order".to_string(),
+                    name: "Order".to_string(),
+                    description: Some("Commande client".to_string()),
+                    attributes: vec![
+                        Attribute {
+                            name: "id".to_string(),
+                            attr_type: "uuid".to_string(),
+                            description: None,
+                            required: Some(true),
+                            unique: Some(true),
+                        },
+                        Attribute {
+                            name: "total".to_string(),
+                            attr_type: "number".to_string(),
+                            description: None,
+                            required: Some(true),
+                            unique: Some(false),
+                        },
+                    ],
+                    primary_key: Some(vec!["id".to_string()]),
+                },
+            ],
+            relations: vec![Relation {
+                id: "user_orders".to_string(),
+                name: "places".to_string(),
+                description: Some("Un utilisateur peut passer plusieurs commandes".to_string()),
+                from: RelationEnd {
+                    entity_id: "User".to_string(),
+                    label: Some("customer".to_string()),
+                },
+                to: RelationEnd {
+                    entity_id: "Order".to_string(),
+                    label: Some("orders".to_string()),
+                },
+                cardinality: Cardinality {
+                    from: "1".to_string(),
+                    to: "0..n".to_string(),
+                },
+            }],
+            invariants: vec![
+                Invariant {
+                    id: "email_unique".to_string(),
+                    name: "Email Uniqueness".to_string(),
+                    description: Some("Chaque email doit être unique".to_string()),
+                    inv_type: "uniqueness".to_string(),
+                    expression: "User.email UNIQUE".to_string(),
+                    severity: Some("error".to_string()),
+                },
+                Invariant {
+                    id: "order_positive".to_string(),
+                    name: "Order Total Positive".to_string(),
+                    description: Some("Le total de la commande doit être positif".to_string()),
+                    inv_type: "domain_constraint".to_string(),
+                    expression: "Order.total > 0".to_string(),
+                    severity: Some("error".to_string()),
+                },
+            ],
+        };
+
+        let result = emit_markdown(&model, Some("business")).unwrap();
+        let markdown = result.get("markdown").unwrap().as_str().unwrap();
+        
+        println!("Generated Markdown:\n{}", markdown);
+        
+        // Verify all required sections are present
+        assert!(markdown.contains("# Contexte"), "Should contain 'Contexte' section");
+        assert!(markdown.contains("## Entités"), "Should contain 'Entités' section");
+        assert!(markdown.contains("## Relations"), "Should contain 'Relations' section");
+        assert!(markdown.contains("## Règles métier"), "Should contain 'Règles métier' section");
+        assert!(markdown.contains("## Glossaire"), "Should contain 'Glossaire' section");
+        
+        // Verify context metadata
+        assert!(markdown.contains("**Entities:** 2"), "Should show entity count");
+        assert!(markdown.contains("**Relations:** 1"), "Should show relation count");
+        assert!(markdown.contains("**Business Rules:** 2"), "Should show invariant count");
+        
+        // Verify entity table exists
+        assert!(markdown.contains("| Entité | Description | Attributs |"), "Should have entity table header");
+        assert!(markdown.contains("| **User** |"), "Should list User entity");
+        assert!(markdown.contains("| **Order** |"), "Should list Order entity");
+        
+        // Verify detailed attribute tables
+        assert!(markdown.contains("### User"), "Should have User detail section");
+        assert!(markdown.contains("| Attribut | Type | Requis | Unique | Description |"), "Should have attribute table");
+        assert!(markdown.contains("| email | `email` |"), "Should list email attribute");
+        
+        // Verify relations table
+        assert!(markdown.contains("| Relation | De | Vers | Cardinalité | Description |"), "Should have relations table");
+        assert!(markdown.contains("| **places** | User | Order | 1..0..n |"), "Should list relation");
+        
+        // Verify business rules as numbered list
+        assert!(markdown.contains("1. **Email Uniqueness**"), "Should have numbered business rule");
+        assert!(markdown.contains("2. **Order Total Positive**"), "Should have second business rule");
+        assert!(markdown.contains("Type: `uniqueness`"), "Should show rule type");
+        assert!(markdown.contains("Expression: `User.email UNIQUE`"), "Should show expression");
+        
+        // Verify glossary
+        assert!(markdown.contains("**Types d'attributs:**"), "Should have attribute types section");
+        assert!(markdown.contains("`uuid`"), "Should list uuid type");
+        assert!(markdown.contains("`email`"), "Should list email type");
+        
+        println!("\n✅ All markdown sections validated!");
+    }
 }
 
 fn emit_markdown(model: &DomainModel, audience: Option<&str>) -> Result<Value> {
     let mut markdown = String::new();
+    use chrono::Utc;
     
-    let title = match audience {
-        Some("technical") => "# Domain Model - Technical Specification\n\n",
-        Some("business") => "# Domain Model - Business Overview\n\n",
-        _ => "# Domain Model\n\n",
-    };
-    markdown.push_str(title);
+    // Title
+    markdown.push_str("# Contexte\n\n");
+    markdown.push_str(&format!("**Generated:** {}\n", Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    markdown.push_str(&format!("**Entities:** {}\n", model.entities.len()));
+    markdown.push_str(&format!("**Relations:** {}\n", model.relations.len()));
+    markdown.push_str(&format!("**Business Rules:** {}\n\n", model.invariants.len()));
     
-    // Entities section
-    markdown.push_str("## Entities\n\n");
-    for entity in &model.entities {
-        markdown.push_str(&format!("### {}\n\n", entity.name));
-        if let Some(desc) = &entity.description {
-            markdown.push_str(&format!("{}\n\n", desc));
+    if let Some(aud) = audience {
+        markdown.push_str(&format!("**Audience:** {}\n\n", aud));
+    }
+    
+    // Entities section - with table
+    markdown.push_str("## Entités\n\n");
+    
+    if model.entities.is_empty() {
+        markdown.push_str("*Aucune entité définie.*\n\n");
+    } else {
+        markdown.push_str("| Entité | Description | Attributs |\n");
+        markdown.push_str("|--------|-------------|-----------|\n");
+        
+        for entity in &model.entities {
+            let desc = entity.description.as_deref().unwrap_or("");
+            let attrs_count = entity.attributes.len();
+            let attrs_summary = if attrs_count == 0 {
+                String::from("0")
+            } else {
+                format!("{} ({})", attrs_count, 
+                    entity.attributes.iter()
+                        .take(3)
+                        .map(|a| a.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "))
+            };
+            
+            markdown.push_str(&format!("| **{}** | {} | {} |\n", 
+                entity.name, desc, attrs_summary));
         }
+        markdown.push_str("\n");
         
-        markdown.push_str("**Attributes:**\n\n");
-        markdown.push_str("| Name | Type | Required | Unique |\n");
-        markdown.push_str("|------|------|----------|--------|\n");
+        // Detailed attributes for each entity
+        for entity in &model.entities {
+            if !entity.attributes.is_empty() {
+                markdown.push_str(&format!("### {}\n\n", entity.name));
+                
+                markdown.push_str("| Attribut | Type | Requis | Unique | Description |\n");
+                markdown.push_str("|----------|------|--------|--------|-------------|\n");
+                
+                for attr in &entity.attributes {
+                    markdown.push_str(&format!(
+                        "| {} | `{}` | {} | {} | {} |\n",
+                        attr.name,
+                        attr.attr_type,
+                        if attr.required.unwrap_or(false) { "✓" } else { "" },
+                        if attr.unique.unwrap_or(false) { "✓" } else { "" },
+                        attr.description.as_deref().unwrap_or("")
+                    ));
+                }
+                markdown.push_str("\n");
+            }
+        }
+    }
+    
+    // Relations section - with table
+    markdown.push_str("## Relations\n\n");
+    
+    if model.relations.is_empty() {
+        markdown.push_str("*Aucune relation définie.*\n\n");
+    } else {
+        markdown.push_str("| Relation | De | Vers | Cardinalité | Description |\n");
+        markdown.push_str("|----------|----|----|-------------|-------------|\n");
         
-        for attr in &entity.attributes {
+        for relation in &model.relations {
+            let desc = relation.description.as_deref().unwrap_or("");
             markdown.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                attr.name,
-                attr.attr_type,
-                if attr.required.unwrap_or(false) { "✓" } else { "" },
-                if attr.unique.unwrap_or(false) { "✓" } else { "" }
+                "| **{}** | {} | {} | {}..{} | {} |\n",
+                relation.name,
+                relation.from.entity_id,
+                relation.to.entity_id,
+                relation.cardinality.from,
+                relation.cardinality.to,
+                desc
             ));
         }
         markdown.push_str("\n");
     }
     
-    // Relations section
-    markdown.push_str("## Relations\n\n");
-    for relation in &model.relations {
-        markdown.push_str(&format!("### {}\n\n", relation.name));
-        if let Some(desc) = &relation.description {
-            markdown.push_str(&format!("{}\n\n", desc));
+    // Business Rules section - as list
+    markdown.push_str("## Règles métier\n\n");
+    
+    if model.invariants.is_empty() {
+        markdown.push_str("*Aucune règle métier définie.*\n\n");
+    } else {
+        for (idx, invariant) in model.invariants.iter().enumerate() {
+            markdown.push_str(&format!("{}. **{}**\n", idx + 1, invariant.name));
+            
+            if let Some(desc) = &invariant.description {
+                markdown.push_str(&format!("   - *{}*\n", desc));
+            }
+            
+            markdown.push_str(&format!("   - Type: `{}`\n", invariant.inv_type));
+            markdown.push_str(&format!("   - Expression: `{}`\n", invariant.expression));
+            
+            if let Some(severity) = &invariant.severity {
+                markdown.push_str(&format!("   - Sévérité: {}\n", severity));
+            }
+            
+            markdown.push_str("\n");
         }
-        markdown.push_str(&format!(
-            "- From: {}\n- To: {}\n- Cardinality: {} to {}\n\n",
-            relation.from.entity_id,
-            relation.to.entity_id,
-            relation.cardinality.from,
-            relation.cardinality.to
-        ));
     }
     
-    // Invariants section
-    markdown.push_str("## Business Invariants\n\n");
-    for invariant in &model.invariants {
-        markdown.push_str(&format!("### {}\n\n", invariant.name));
-        if let Some(desc) = &invariant.description {
-            markdown.push_str(&format!("{}\n\n", desc));
+    // Glossary section
+    markdown.push_str("## Glossaire\n\n");
+    
+    // Build glossary from entities and their attributes
+    let mut glossary: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    
+    for entity in &model.entities {
+        let entry = glossary.entry(entity.name.clone()).or_insert_with(Vec::new);
+        if let Some(desc) = &entity.description {
+            entry.push(desc.clone());
         }
-        markdown.push_str(&format!("- Type: {}\n", invariant.inv_type));
-        markdown.push_str(&format!("- Expression: `{}`\n", invariant.expression));
-        if let Some(severity) = &invariant.severity {
-            markdown.push_str(&format!("- Severity: {}\n", severity));
+    }
+    
+    // Add attribute types to glossary
+    let mut attr_types: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for entity in &model.entities {
+        for attr in &entity.attributes {
+            attr_types.insert(attr.attr_type.clone());
+        }
+    }
+    
+    if glossary.is_empty() && attr_types.is_empty() {
+        markdown.push_str("*Aucun terme défini.*\n\n");
+    } else {
+        for (term, descriptions) in &glossary {
+            if !descriptions.is_empty() {
+                markdown.push_str(&format!("- **{}**: {}\n", term, descriptions.join("; ")));
+            }
+        }
+        
+        if !attr_types.is_empty() {
+            markdown.push_str("\n**Types d'attributs:**\n\n");
+            for attr_type in &attr_types {
+                markdown.push_str(&format!("- `{}`\n", attr_type));
+            }
         }
         markdown.push_str("\n");
     }
