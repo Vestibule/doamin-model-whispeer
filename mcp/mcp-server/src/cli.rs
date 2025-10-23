@@ -36,6 +36,10 @@ struct Args {
     /// Enable detailed tracing (logs prompts as hashes, never raw PII)
     #[arg(long)]
     trace: bool,
+    
+    /// Number of retry attempts for invalid JSON responses (default: 2)
+    #[arg(long, default_value = "2")]
+    retry: u32,
 }
 
 /// Hash sensitive data for logging (privacy-preserving)
@@ -138,7 +142,140 @@ struct ValidationError {
     diff: Option<Value>,
 }
 
-async fn call_llm_api(transcript: &str, dry_run: bool, enable_trace: bool) -> Result<DomainModel> {
+/// Repair invalid JSON using LLM without changing content
+async fn repair_json_with_llm(
+    invalid_json: &str,
+    error_message: &str,
+    provider: &str,
+    enable_trace: bool,
+) -> Result<String> {
+    if enable_trace {
+        warn!(target: "domain::llm", "Attempting JSON repair");
+        info!(target: "domain::llm", error = error_message, invalid_json_length = invalid_json.len(), "JSON parsing failed");
+    }
+    
+    let repair_prompt = format!(
+        r#"The following JSON is invalid and needs to be repaired.
+
+ERROR: {}
+
+INVALID JSON:
+{}
+
+INSTRUCTIONS:
+1. Fix ONLY the JSON structure/syntax errors
+2. Do NOT change any content, values, or field names
+3. Ensure it conforms to the DomainModel schema
+4. Return ONLY the corrected JSON, no explanations
+
+DomainModel schema:
+{{
+  "entities": [{{"id": "string", "name": "string", "attributes": [{{"name": "string", "type": "string", "required": boolean, "unique": boolean}}]}}],
+  "relations": [{{"id": "string", "name": "string", "from": {{"entityId": "string"}}, "to": {{"entityId": "string"}}, "cardinality": {{"from": "string", "to": "string"}}}}],
+  "invariants": [{{"id": "string", "name": "string", "type": "string", "expression": "string"}}]
+}}
+
+Repaired JSON:"#,
+        error_message, invalid_json
+    );
+    
+    if enable_trace {
+        log_prompt_trace("repair_json", &repair_prompt, 0);
+    }
+    
+    let _ = dotenvy::dotenv();
+    let client = reqwest::Client::new();
+    
+    match provider.to_lowercase().as_str() {
+        "ollama" => {
+            let base_url = env::var("OLLAMA_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:11434".to_string());
+            let model = env::var("OLLAMA_MODEL")
+                .unwrap_or_else(|_| "llama2".to_string());
+            
+            if enable_trace {
+                info!(target: "domain::llm", provider = "ollama", model = model, "Calling repair prompt");
+            }
+            
+            let url = format!("{}/api/generate", base_url);
+            let request_body = json!({
+                "model": model,
+                "prompt": repair_prompt,
+                "stream": false,
+                "format": "json"
+            });
+            
+            let response = client
+                .post(&url)
+                .json(&request_body)
+                .send()
+                .await
+                .context("Failed to call Ollama for repair")?;
+            
+            let response_json: Value = response.json().await?;
+            let repaired = response_json
+                .get("response")
+                .and_then(|v| v.as_str())
+                .context("No response from Ollama repair")?;
+            
+            if enable_trace {
+                info!(target: "domain::llm", repaired_length = repaired.len(), "Received repaired JSON");
+            }
+            
+            Ok(repaired.to_string())
+        }
+        _ => {
+            let api_key = env::var("LLM_API_KEY")
+                .context("LLM_API_KEY not set")?;
+            let endpoint = env::var("LLM_ENDPOINT")
+                .context("LLM_ENDPOINT not set")?;
+            
+            if enable_trace {
+                info!(target: "domain::llm", provider = provider, "Calling external LLM for repair");
+            }
+            
+            let request_body = json!({
+                "messages": [
+                    {"role": "system", "content": "You are a JSON repair assistant. Fix syntax errors without changing content."},
+                    {"role": "user", "content": repair_prompt}
+                ],
+                "temperature": 0.3,
+                "response_format": {"type": "json_object"}
+            });
+            
+            let response = client
+                .post(&endpoint)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
+                .json(&request_body)
+                .send()
+                .await
+                .context("Failed to call external LLM for repair")?;
+            
+            let response_json: Value = response.json().await?;
+            let content = response_json
+                .get("choices")
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.get("message"))
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .context("Failed to extract repaired JSON")?;
+            
+            if enable_trace {
+                info!(target: "domain::llm", repaired_length = content.len(), "Received repaired JSON from external LLM");
+            }
+            
+            Ok(content.to_string())
+        }
+    }
+}
+
+async fn call_llm_api(
+    transcript: &str,
+    dry_run: bool,
+    enable_trace: bool,
+    max_retries: u32,
+) -> Result<DomainModel> {
     if enable_trace {
         info!(target: "domain::llm", "Starting LLM API call (dry_run={})", dry_run);
     }
@@ -274,20 +411,65 @@ RÈGLES STRICTES:
                 info!(target: "domain::llm", response_size = llm_output.len(), "Received Ollama response");
             }
 
-            let domain_model: DomainModel = serde_json::from_str(llm_output)
-                .context("Failed to parse LLM output as DomainModel")?;
+            // Try to parse, with retry logic on failure
+            let mut last_error_msg = None;
+            let mut current_output = llm_output.to_string();
             
-            if enable_trace {
-                info!(
-                    target: "domain::llm",
-                    entities = domain_model.entities.len(),
-                    relations = domain_model.relations.len(),
-                    invariants = domain_model.invariants.len(),
-                    "Parsed DomainModel from LLM response"
-                );
+            for attempt in 0..=max_retries {
+                match serde_json::from_str::<DomainModel>(&current_output) {
+                    Ok(domain_model) => {
+                        if enable_trace {
+                            info!(
+                                target: "domain::llm",
+                                attempt = attempt,
+                                entities = domain_model.entities.len(),
+                                relations = domain_model.relations.len(),
+                                invariants = domain_model.invariants.len(),
+                                "Successfully parsed DomainModel"
+                            );
+                        }
+                        return Ok(domain_model);
+                    }
+                    Err(e) => {
+                        let error_str = e.to_string();
+                        last_error_msg = Some(error_str.clone());
+                        
+                        if attempt < max_retries {
+                            if enable_trace {
+                                warn!(
+                                    target: "domain::llm",
+                                    attempt = attempt,
+                                    error = error_str,
+                                    "JSON parsing failed, attempting repair"
+                                );
+                            }
+                            
+                            // Attempt repair
+                            match repair_json_with_llm(
+                                &current_output,
+                                &error_str,
+                                &provider,
+                                enable_trace,
+                            ).await {
+                                Ok(repaired) => {
+                                    current_output = repaired;
+                                    if enable_trace {
+                                        info!(target: "domain::llm", attempt = attempt + 1, "Retry with repaired JSON");
+                                    }
+                                }
+                                Err(repair_err) => {
+                                    if enable_trace {
+                                        warn!(target: "domain::llm", error = %repair_err, "Repair attempt failed");
+                                    }
+                                    // Continue to next retry
+                                }
+                            }
+                        }
+                    }
+                }
             }
-
-            Ok(domain_model)
+            
+            Err(anyhow::anyhow!("Failed to parse JSON after {} retries: {}", max_retries, last_error_msg.unwrap()))
         }
         _ => {
             let api_key = env::var("LLM_API_KEY")
@@ -338,20 +520,65 @@ RÈGLES STRICTES:
                 info!(target: "domain::llm", response_size = content.len(), "Received external LLM response");
             }
 
-            let domain_model: DomainModel = serde_json::from_str(content)
-                .context("Failed to parse LLM output as DomainModel")?;
+            // Try to parse, with retry logic on failure
+            let mut last_error_msg = None;
+            let mut current_output = content.to_string();
             
-            if enable_trace {
-                info!(
-                    target: "domain::llm",
-                    entities = domain_model.entities.len(),
-                    relations = domain_model.relations.len(),
-                    invariants = domain_model.invariants.len(),
-                    "Parsed DomainModel from LLM response"
-                );
+            for attempt in 0..=max_retries {
+                match serde_json::from_str::<DomainModel>(&current_output) {
+                    Ok(domain_model) => {
+                        if enable_trace {
+                            info!(
+                                target: "domain::llm",
+                                attempt = attempt,
+                                entities = domain_model.entities.len(),
+                                relations = domain_model.relations.len(),
+                                invariants = domain_model.invariants.len(),
+                                "Successfully parsed DomainModel"
+                            );
+                        }
+                        return Ok(domain_model);
+                    }
+                    Err(e) => {
+                        let error_str = e.to_string();
+                        last_error_msg = Some(error_str.clone());
+                        
+                        if attempt < max_retries {
+                            if enable_trace {
+                                warn!(
+                                    target: "domain::llm",
+                                    attempt = attempt,
+                                    error = error_str,
+                                    "JSON parsing failed, attempting repair"
+                                );
+                            }
+                            
+                            // Attempt repair
+                            match repair_json_with_llm(
+                                &current_output,
+                                &error_str,
+                                &provider,
+                                enable_trace,
+                            ).await {
+                                Ok(repaired) => {
+                                    current_output = repaired;
+                                    if enable_trace {
+                                        info!(target: "domain::llm", attempt = attempt + 1, "Retry with repaired JSON");
+                                    }
+                                }
+                                Err(repair_err) => {
+                                    if enable_trace {
+                                        warn!(target: "domain::llm", error = %repair_err, "Repair attempt failed");
+                                    }
+                                    // Continue to next retry
+                                }
+                            }
+                        }
+                    }
+                }
             }
-
-            Ok(domain_model)
+            
+            Err(anyhow::anyhow!("Failed to parse JSON after {} retries: {}", max_retries, last_error_msg.unwrap()))
         }
     }
 }
@@ -488,7 +715,7 @@ async fn run_pipeline(args: &Args) -> Result<()> {
     println!("      Mode: {}", if args.dry_run_llm { "DRY-RUN" } else { "LIVE LLM" });
     let start = Instant::now();
     
-    let domain_model = match call_llm_api(&full_transcript, args.dry_run_llm, args.trace).await {
+    let domain_model = match call_llm_api(&full_transcript, args.dry_run_llm, args.trace, args.retry).await {
         Ok(model) => {
             steps[1].succeed(start.elapsed().as_millis() as u64);
             model
