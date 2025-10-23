@@ -1,0 +1,6 @@
+{"speaker": "user", "text": "Un système de bibliothèque simple"}
+{"speaker": "user", "text": "Un Livre a un titre obligatoire, un ISBN unique, et une date de publication"}
+{"speaker": "user", "text": "Un Auteur a un nom obligatoire et une biographie optionnelle"}
+{"speaker": "user", "text": "Un Livre est écrit par au moins un Auteur (1..n)"}
+{"speaker": "user", "text": "Un Auteur peut écrire zéro ou plusieurs Livres (0..n)"}
+{"speaker": "user", "text": "Invariant: L'ISBN doit être unique dans tout le système"}
