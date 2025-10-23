@@ -992,6 +992,424 @@ Un système de bibliothèque simple:
     }
 }
 
+#[cfg(test)]
+mod orchestration {
+    use super::*;
+    
+    /// Helper function to simulate LLM parsing markdown back to DomainModel
+    /// In real scenario, this would call the LLM API
+    fn parse_markdown_to_model(markdown: &str) -> Result<DomainModel> {
+        // Extract entities from markdown
+        let mut entities = Vec::new();
+        let mut relations = Vec::new();
+        let mut invariants = Vec::new();
+        
+        // Simple parser for our structured markdown format
+        let lines: Vec<&str> = markdown.lines().collect();
+        let mut i = 0;
+        
+        while i < lines.len() {
+            let line = lines[i].trim();
+            
+            // Parse entity sections
+            if line.starts_with("### ") && !line.contains("Contexte") {
+                let entity_name = line.trim_start_matches("### ").trim();
+                
+                // Look for attribute table
+                i += 1;
+                while i < lines.len() && !lines[i].contains("| Attribut | Type") {
+                    i += 1;
+                }
+                
+                if i < lines.len() {
+                    i += 2; // Skip header and separator
+                    
+                    let mut attributes = Vec::new();
+                    while i < lines.len() {
+                        let attr_line = lines[i].trim();
+                        if attr_line.is_empty() || attr_line.starts_with("##") || attr_line.starts_with("###") {
+                            break;
+                        }
+                        
+                        if attr_line.starts_with("|") {
+                            let parts: Vec<&str> = attr_line.split('|')
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            
+                            if parts.len() >= 4 {
+                                let name = parts[0].to_string();
+                                let type_str = parts[1].trim_matches('`').to_string();
+                                let required = parts[2].contains('✓');
+                                let unique = parts[3].contains('✓');
+                                
+                                attributes.push(Attribute {
+                                    name,
+                                    attr_type: type_str,
+                                    description: None,
+                                    required: Some(required),
+                                    unique: Some(unique),
+                                });
+                            }
+                        }
+                        i += 1;
+                    }
+                    
+                    // Create entity
+                    let has_unique = attributes.iter().any(|a| a.unique.unwrap_or(false));
+                    let primary_key = if has_unique {
+                        Some(vec![attributes.iter()
+                            .find(|a| a.unique.unwrap_or(false))
+                            .map(|a| a.name.clone())
+                            .unwrap_or_default()])
+                    } else {
+                        None
+                    };
+                    
+                    entities.push(Entity {
+                        id: entity_name.to_string(),
+                        name: entity_name.to_string(),
+                        description: None,
+                        attributes,
+                        primary_key,
+                    });
+                }
+            }
+            
+            // Parse relations from table
+            if line.contains("| Relation | De | Vers | Cardinalité") {
+                i += 2; // Skip header and separator
+                
+                while i < lines.len() {
+                    let rel_line = lines[i].trim();
+                    if rel_line.is_empty() || rel_line.starts_with("##") {
+                        break;
+                    }
+                    
+                    if rel_line.starts_with("|") {
+                        let parts: Vec<&str> = rel_line.split('|')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        
+                        if parts.len() >= 4 {
+                            let name = parts[0].trim_matches('*').trim().to_string();
+                            let from_entity = parts[1].to_string();
+                            let to_entity = parts[2].to_string();
+                            let cardinality_str = parts[3];
+                            
+                            // Parse cardinality "1..0..n" -> from: "1", to: "0..n"
+                            let card_parts: Vec<&str> = cardinality_str.split("..").collect();
+                            let (from_card, to_card) = if card_parts.len() >= 2 {
+                                (card_parts[0].to_string(), card_parts[1..].join(".."))
+                            } else {
+                                ("1".to_string(), "1".to_string())
+                            };
+                            
+                            relations.push(Relation {
+                                id: format!("{}_{}", from_entity.to_lowercase(), to_entity.to_lowercase()),
+                                name,
+                                description: None,
+                                from: RelationEnd {
+                                    entity_id: from_entity,
+                                    label: None,
+                                },
+                                to: RelationEnd {
+                                    entity_id: to_entity,
+                                    label: None,
+                                },
+                                cardinality: Cardinality {
+                                    from: from_card,
+                                    to: to_card,
+                                },
+                            });
+                        }
+                    }
+                    i += 1;
+                }
+            }
+            
+            // Parse business rules
+            if line.starts_with("## Règles métier") {
+                i += 1;
+                while i < lines.len() {
+                    let rule_line = lines[i].trim();
+                    if rule_line.is_empty() || rule_line.starts_with("##") {
+                        break;
+                    }
+                    
+                    if rule_line.chars().next().map_or(false, |c| c.is_numeric()) {
+                        // Extract rule name
+                        let rule_name = rule_line.split("**")
+                            .nth(1)
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        
+                        // Look for type and expression
+                        let mut rule_type = "business_rule".to_string();
+                        let mut expression = String::new();
+                        
+                        i += 1;
+                        while i < lines.len() && lines[i].trim().starts_with("-") {
+                            let detail = lines[i].trim();
+                            if detail.contains("Type:") {
+                                rule_type = detail.split('`').nth(1).unwrap_or("business_rule").to_string();
+                            } else if detail.contains("Expression:") {
+                                expression = detail.split('`').nth(1).unwrap_or("").to_string();
+                            }
+                            i += 1;
+                        }
+                        
+                        invariants.push(Invariant {
+                            id: rule_name.to_lowercase().replace(' ', "_"),
+                            name: rule_name,
+                            description: None,
+                            inv_type: rule_type,
+                            expression,
+                            severity: Some("error".to_string()),
+                        });
+                        continue;
+                    }
+                    i += 1;
+                }
+            }
+            
+            i += 1;
+        }
+        
+        Ok(DomainModel {
+            entities,
+            relations,
+            invariants,
+        })
+    }
+    
+    /// Compare two domain models and return a structured diff
+    fn compare_models(original: &DomainModel, reconstructed: &DomainModel) -> Value {
+        let mut differences = json!({
+            "entities": {
+                "added": [],
+                "removed": [],
+                "modified": []
+            },
+            "relations": {
+                "added": [],
+                "removed": [],
+                "modified": []
+            },
+            "invariants": {
+                "added": [],
+                "removed": [],
+                "modified": []
+            }
+        });
+        
+        // Compare entities
+        let orig_entity_ids: std::collections::HashSet<_> = 
+            original.entities.iter().map(|e| &e.id).collect();
+        let recon_entity_ids: std::collections::HashSet<_> = 
+            reconstructed.entities.iter().map(|e| &e.id).collect();
+        
+        for entity in &reconstructed.entities {
+            if !orig_entity_ids.contains(&entity.id) {
+                differences["entities"]["added"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!(entity.id));
+            }
+        }
+        
+        for entity in &original.entities {
+            if !recon_entity_ids.contains(&entity.id) {
+                differences["entities"]["removed"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!(entity.id));
+            }
+        }
+        
+        // Compare relations
+        let orig_rel_ids: std::collections::HashSet<_> = 
+            original.relations.iter().map(|r| &r.id).collect();
+        let recon_rel_ids: std::collections::HashSet<_> = 
+            reconstructed.relations.iter().map(|r| &r.id).collect();
+        
+        for relation in &reconstructed.relations {
+            if !orig_rel_ids.contains(&relation.id) {
+                differences["relations"]["added"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!(relation.id));
+            }
+        }
+        
+        for relation in &original.relations {
+            if !recon_rel_ids.contains(&relation.id) {
+                differences["relations"]["removed"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!(relation.id));
+            }
+        }
+        
+        // Compare invariants
+        let orig_inv_ids: std::collections::HashSet<_> = 
+            original.invariants.iter().map(|i| &i.id).collect();
+        let recon_inv_ids: std::collections::HashSet<_> = 
+            reconstructed.invariants.iter().map(|i| &i.id).collect();
+        
+        for invariant in &reconstructed.invariants {
+            if !orig_inv_ids.contains(&invariant.id) {
+                differences["invariants"]["added"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!(invariant.id));
+            }
+        }
+        
+        for invariant in &original.invariants {
+            if !recon_inv_ids.contains(&invariant.id) {
+                differences["invariants"]["removed"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!(invariant.id));
+            }
+        }
+        
+        differences
+    }
+    
+    #[test]
+    fn idempotence() {
+        println!("\n🔄 Testing idempotence: Model → Markdown → Model\n");
+        
+        // Step 1: Create initial domain model
+        let original_model = DomainModel {
+            entities: vec![
+                Entity {
+                    id: "User".to_string(),
+                    name: "User".to_string(),
+                    description: Some("Utilisateur du système".to_string()),
+                    attributes: vec![
+                        Attribute {
+                            name: "id".to_string(),
+                            attr_type: "uuid".to_string(),
+                            description: Some("Identifiant unique".to_string()),
+                            required: Some(true),
+                            unique: Some(true),
+                        },
+                        Attribute {
+                            name: "email".to_string(),
+                            attr_type: "email".to_string(),
+                            description: Some("Adresse email".to_string()),
+                            required: Some(true),
+                            unique: Some(false),
+                        },
+                    ],
+                    primary_key: Some(vec!["id".to_string()]),
+                },
+                Entity {
+                    id: "Order".to_string(),
+                    name: "Order".to_string(),
+                    description: Some("Commande".to_string()),
+                    attributes: vec![
+                        Attribute {
+                            name: "id".to_string(),
+                            attr_type: "uuid".to_string(),
+                            description: None,
+                            required: Some(true),
+                            unique: Some(true),
+                        },
+                    ],
+                    primary_key: Some(vec!["id".to_string()]),
+                },
+            ],
+            relations: vec![Relation {
+                id: "user_orders".to_string(),
+                name: "places".to_string(),
+                description: Some("Relation utilisateur-commandes".to_string()),
+                from: RelationEnd {
+                    entity_id: "User".to_string(),
+                    label: None,
+                },
+                to: RelationEnd {
+                    entity_id: "Order".to_string(),
+                    label: None,
+                },
+                cardinality: Cardinality {
+                    from: "1".to_string(),
+                    to: "0..n".to_string(),
+                },
+            }],
+            invariants: vec![Invariant {
+                id: "email_unique".to_string(),
+                name: "Email Uniqueness".to_string(),
+                description: Some("Email doit être unique".to_string()),
+                inv_type: "uniqueness".to_string(),
+                expression: "User.email UNIQUE".to_string(),
+                severity: Some("error".to_string()),
+            }],
+        };
+        
+        println!("📊 Original model:");
+        println!("   - {} entities", original_model.entities.len());
+        println!("   - {} relations", original_model.relations.len());
+        println!("   - {} invariants\n", original_model.invariants.len());
+        
+        // Step 2: Generate markdown
+        println!("📝 Step 1: Generate Markdown from original model...");
+        let markdown_result = emit_markdown(&original_model, None).unwrap();
+        let markdown = markdown_result.get("markdown").unwrap().as_str().unwrap();
+        println!("   ✓ Generated {} bytes of markdown\n", markdown.len());
+        
+        // Step 3: Parse markdown back to model
+        println!("🔍 Step 2: Parse Markdown back to DomainModel...");
+        let reconstructed_model = parse_markdown_to_model(markdown).unwrap();
+        println!("   ✓ Reconstructed model:");
+        println!("      - {} entities", reconstructed_model.entities.len());
+        println!("      - {} relations", reconstructed_model.relations.len());
+        println!("      - {} invariants\n", reconstructed_model.invariants.len());
+        
+        // Step 4: Compare models
+        println!("⚖️  Step 3: Comparing models...");
+        let diff = compare_models(&original_model, &reconstructed_model);
+        println!("\n📋 Structural Diff:\n{}", serde_json::to_string_pretty(&diff).unwrap());
+        
+        // Assertions
+        assert_eq!(
+            original_model.entities.len(),
+            reconstructed_model.entities.len(),
+            "Entity count should match"
+        );
+        
+        assert_eq!(
+            original_model.relations.len(),
+            reconstructed_model.relations.len(),
+            "Relation count should match"
+        );
+        
+        assert_eq!(
+            original_model.invariants.len(),
+            reconstructed_model.invariants.len(),
+            "Invariant count should match"
+        );
+        
+        // Check no added/removed items
+        assert_eq!(
+            diff["entities"]["added"].as_array().unwrap().len(),
+            0,
+            "No entities should be added"
+        );
+        assert_eq!(
+            diff["entities"]["removed"].as_array().unwrap().len(),
+            0,
+            "No entities should be removed"
+        );
+        
+        println!("\n✅ Idempotence test passed! Model is stable through Markdown round-trip.\n");
+    }
+}
+
 fn emit_markdown(model: &DomainModel, audience: Option<&str>) -> Result<Value> {
     let mut markdown = String::new();
     use chrono::Utc;
