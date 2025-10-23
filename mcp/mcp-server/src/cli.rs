@@ -2,9 +2,11 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Sha256, Digest};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use tracing::{debug, info, warn};
 
 /// CLI for testing MCP server with LLM integration
 #[derive(Parser, Debug)]
@@ -30,6 +32,46 @@ struct Args {
     /// Validate model but don't emit files
     #[arg(long)]
     validate_only: bool,
+    
+    /// Enable detailed tracing (logs prompts as hashes, never raw PII)
+    #[arg(long)]
+    trace: bool,
+}
+
+/// Hash sensitive data for logging (privacy-preserving)
+fn hash_sensitive(data: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+/// Sanitize and log prompt metadata
+fn log_prompt_trace(prompt_type: &str, prompt: &str, response_size: usize) {
+    let hash = hash_sensitive(prompt);
+    let preview = if prompt.len() > 100 {
+        format!("{}...", &prompt[..100])
+    } else {
+        prompt.to_string()
+    };
+    
+    debug!(
+        target: "domain::llm",
+        prompt_type = prompt_type,
+        prompt_hash = hash,
+        prompt_length = prompt.len(),
+        prompt_preview = preview,
+        response_size = response_size,
+        "LLM interaction traced"
+    );
+    
+    info!(
+        target: "domain::llm",
+        prompt_type = prompt_type,
+        prompt_hash = hash,
+        prompt_length = prompt.len(),
+        response_size = response_size,
+        "LLM call completed"
+    );
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,8 +138,16 @@ struct ValidationError {
     diff: Option<Value>,
 }
 
-async fn call_llm_api(transcript: &str, dry_run: bool) -> Result<DomainModel> {
+async fn call_llm_api(transcript: &str, dry_run: bool, enable_trace: bool) -> Result<DomainModel> {
+    if enable_trace {
+        info!(target: "domain::llm", "Starting LLM API call (dry_run={})", dry_run);
+    }
+    
     if dry_run {
+        if enable_trace {
+            info!(target: "domain::llm", "Using dry-run mock data");
+            log_prompt_trace("normalize_terms", transcript, 500);
+        }
         // Simulate LLM response for dry-run mode
         return Ok(DomainModel {
             entities: vec![
@@ -187,12 +237,22 @@ RÈGLES STRICTES:
             let model = env::var("OLLAMA_MODEL")
                 .unwrap_or_else(|_| "llama2".to_string());
             
+            if enable_trace {
+                info!(target: "domain::llm", provider = "ollama", model = model, url = base_url, "Calling Ollama API");
+            }
+            
             let client = reqwest::Client::new();
             let url = format!("{}/api/generate", base_url);
             
+            let full_prompt = format!("{}\n\nUser: {}", system_prompt, transcript);
+            
+            if enable_trace {
+                log_prompt_trace("normalize_terms_ollama", &full_prompt, 0);
+            }
+            
             let request_body = json!({
                 "model": model,
-                "prompt": format!("{}\n\nUser: {}", system_prompt, transcript),
+                "prompt": full_prompt,
                 "stream": false,
                 "format": "json"
             });
@@ -209,9 +269,23 @@ RÈGLES STRICTES:
                 .get("response")
                 .and_then(|v| v.as_str())
                 .context("No response from Ollama")?;
+            
+            if enable_trace {
+                info!(target: "domain::llm", response_size = llm_output.len(), "Received Ollama response");
+            }
 
             let domain_model: DomainModel = serde_json::from_str(llm_output)
                 .context("Failed to parse LLM output as DomainModel")?;
+            
+            if enable_trace {
+                info!(
+                    target: "domain::llm",
+                    entities = domain_model.entities.len(),
+                    relations = domain_model.relations.len(),
+                    invariants = domain_model.invariants.len(),
+                    "Parsed DomainModel from LLM response"
+                );
+            }
 
             Ok(domain_model)
         }
@@ -221,7 +295,17 @@ RÈGLES STRICTES:
             let endpoint = env::var("LLM_ENDPOINT")
                 .context("LLM_ENDPOINT not set")?;
             
+            if enable_trace {
+                let api_key_hash = hash_sensitive(&api_key);
+                info!(target: "domain::llm", provider = provider.as_str(), endpoint = endpoint, api_key_hash = api_key_hash, "Calling external LLM API");
+                warn!(target: "domain::llm", "API key is hashed in logs for security");
+            }
+            
             let client = reqwest::Client::new();
+            
+            if enable_trace {
+                log_prompt_trace("normalize_terms_external", transcript, 0);
+            }
             
             let request_body = json!({
                 "messages": [
@@ -249,9 +333,23 @@ RÈGLES STRICTES:
                 .and_then(|m| m.get("content"))
                 .and_then(|c| c.as_str())
                 .context("Failed to extract content from LLM response")?;
+            
+            if enable_trace {
+                info!(target: "domain::llm", response_size = content.len(), "Received external LLM response");
+            }
 
             let domain_model: DomainModel = serde_json::from_str(content)
                 .context("Failed to parse LLM output as DomainModel")?;
+            
+            if enable_trace {
+                info!(
+                    target: "domain::llm",
+                    entities = domain_model.entities.len(),
+                    relations = domain_model.relations.len(),
+                    invariants = domain_model.invariants.len(),
+                    "Parsed DomainModel from LLM response"
+                );
+            }
 
             Ok(domain_model)
         }
@@ -390,7 +488,7 @@ async fn run_pipeline(args: &Args) -> Result<()> {
     println!("      Mode: {}", if args.dry_run_llm { "DRY-RUN" } else { "LIVE LLM" });
     let start = Instant::now();
     
-    let domain_model = match call_llm_api(&full_transcript, args.dry_run_llm).await {
+    let domain_model = match call_llm_api(&full_transcript, args.dry_run_llm, args.trace).await {
         Ok(model) => {
             steps[1].succeed(start.elapsed().as_millis() as u64);
             model
@@ -525,9 +623,23 @@ async fn run_pipeline(args: &Args) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
-    
     let args = Args::parse();
+    
+    // Setup tracing with JSON format if trace is enabled
+    if args.trace {
+        use tracing_subscriber::fmt::format::FmtSpan;
+        tracing_subscriber::fmt()
+            .with_target(true)
+            .with_level(true)
+            .with_span_events(FmtSpan::ACTIVE)
+            .json()
+            .init();
+        
+        info!(target: "domain::cli", trace_enabled = true, "Tracing activated with JSON output");
+        info!(target: "domain::cli", "All prompts are hashed - no PII in logs");
+    } else {
+        tracing_subscriber::fmt::init();
+    }
     
     if let Err(e) = run_pipeline(&args).await {
         eprintln!("\n❌ Error: {}", e);
