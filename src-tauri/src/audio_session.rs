@@ -85,6 +85,7 @@ pub struct Utterance {
 }
 
 /// Gestionnaire de session audio avec détection d'utterances
+#[derive(Clone)]
 pub struct AudioSession {
     config: AudioSessionConfig,
     vad: Arc<Mutex<SendVad>>,

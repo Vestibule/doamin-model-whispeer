@@ -1,0 +1,333 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://domain-model-note-taking.local/schemas/domain_model.schema.json",
+  "title": "Domain Model Schema",
+  "description": "Schema for domain model with entities, relations, and invariants",
+  "type": "object",
+  "required": ["entities", "relations", "invariants"],
+  "properties": {
+    "entities": {
+      "type": "array",
+      "description": "List of domain entities",
+      "items": {
+        "$ref": "#/definitions/Entity"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "description": "List of relations between entities",
+      "items": {
+        "$ref": "#/definitions/Relation"
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "description": "List of business invariants and constraints",
+      "items": {
+        "$ref": "#/definitions/Invariant"
+      }
+    }
+  },
+  "definitions": {
+    "Entity": {
+      "type": "object",
+      "description": "A domain entity with attributes and constraints",
+      "required": ["id", "name", "attributes"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the entity",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the entity",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the entity's purpose"
+        },
+        "attributes": {
+          "type": "array",
+          "description": "List of entity attributes",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/Attribute"
+          }
+        },
+        "primaryKey": {
+          "type": "array",
+          "description": "Attribute(s) forming the primary key",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "uniqueConstraints": {
+          "type": "array",
+          "description": "Additional unique constraints beyond primary key",
+          "items": {
+            "type": "object",
+            "required": ["name", "attributes"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the unique constraint"
+              },
+              "attributes": {
+                "type": "array",
+                "description": "Attributes that must be unique together",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Attribute": {
+      "type": "object",
+      "description": "An attribute of an entity",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Attribute name",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"
+        },
+        "type": {
+          "type": "string",
+          "description": "Data type of the attribute",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "date",
+            "datetime",
+            "email",
+            "url",
+            "uuid",
+            "json",
+            "text"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the attribute"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the attribute is required",
+          "default": false
+        },
+        "unique": {
+          "type": "boolean",
+          "description": "Whether the attribute must be unique",
+          "default": false
+        },
+        "defaultValue": {
+          "description": "Default value for the attribute"
+        },
+        "validation": {
+          "$ref": "#/definitions/ValidationRules"
+        }
+      }
+    },
+    "ValidationRules": {
+      "type": "object",
+      "description": "Validation rules for an attribute",
+      "properties": {
+        "minLength": {
+          "type": "integer",
+          "description": "Minimum length for string types",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "description": "Maximum length for string types",
+          "minimum": 0
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum value for number types"
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum value for number types"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regular expression pattern for string validation"
+        },
+        "enum": {
+          "type": "array",
+          "description": "List of allowed values",
+          "minItems": 1
+        },
+        "custom": {
+          "type": "string",
+          "description": "Custom validation rule expression"
+        }
+      }
+    },
+    "Relation": {
+      "type": "object",
+      "description": "A relation between two entities",
+      "required": ["id", "name", "from", "to", "cardinality"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the relation",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the relation",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the relation"
+        },
+        "from": {
+          "type": "object",
+          "description": "Source entity of the relation",
+          "required": ["entityId"],
+          "properties": {
+            "entityId": {
+              "type": "string",
+              "description": "ID of the source entity"
+            },
+            "attribute": {
+              "type": "string",
+              "description": "Optional attribute on the source entity"
+            },
+            "label": {
+              "type": "string",
+              "description": "Label for the relation from source perspective"
+            }
+          }
+        },
+        "to": {
+          "type": "object",
+          "description": "Target entity of the relation",
+          "required": ["entityId"],
+          "properties": {
+            "entityId": {
+              "type": "string",
+              "description": "ID of the target entity"
+            },
+            "attribute": {
+              "type": "string",
+              "description": "Optional attribute on the target entity"
+            },
+            "label": {
+              "type": "string",
+              "description": "Label for the relation from target perspective"
+            }
+          }
+        },
+        "cardinality": {
+          "type": "object",
+          "description": "Cardinality constraints for the relation",
+          "required": ["from", "to"],
+          "properties": {
+            "from": {
+              "$ref": "#/definitions/CardinalityType"
+            },
+            "to": {
+              "$ref": "#/definitions/CardinalityType"
+            }
+          }
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the relation is mandatory",
+          "default": false
+        },
+        "cascadeDelete": {
+          "type": "boolean",
+          "description": "Whether to cascade delete related entities",
+          "default": false
+        }
+      }
+    },
+    "CardinalityType": {
+      "type": "string",
+      "description": "Cardinality type for relations",
+      "enum": ["0..1", "1", "0..n", "1..n", "*"]
+    },
+    "Invariant": {
+      "type": "object",
+      "description": "A business invariant or constraint",
+      "required": ["id", "name", "type", "expression"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the invariant",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the invariant",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the invariant"
+        },
+        "type": {
+          "type": "string",
+          "description": "Type of invariant",
+          "enum": [
+            "uniqueness",
+            "referential_integrity",
+            "domain_constraint",
+            "cardinality",
+            "business_rule",
+            "temporal",
+            "aggregation"
+          ]
+        },
+        "scope": {
+          "type": "object",
+          "description": "Scope of the invariant",
+          "properties": {
+            "entities": {
+              "type": "array",
+              "description": "Entities involved in the invariant",
+              "items": {
+                "type": "string"
+              }
+            },
+            "relations": {
+              "type": "array",
+              "description": "Relations involved in the invariant",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "expression": {
+          "type": "string",
+          "description": "Formal expression of the invariant (logical formula)"
+        },
+        "severity": {
+          "type": "string",
+          "description": "Severity level if invariant is violated",
+          "enum": ["error", "warning", "info"],
+          "default": "error"
+        },
+        "errorMessage": {
+          "type": "string",
+          "description": "Error message to display when invariant is violated"
+        }
+      }
+    }
+  }
+}

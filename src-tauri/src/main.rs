@@ -18,6 +18,10 @@ struct Args {
     #[arg(long)]
     model: Option<PathBuf>,
 
+    /// Output markdown file for transcription
+    #[arg(long)]
+    emit_md: Option<PathBuf>,
+
     /// Enable audio streaming mode with VAD
     #[arg(long)]
     stream: bool,
@@ -49,23 +53,126 @@ fn main() {
     }
 
     // If CLI arguments are provided, run in CLI mode
-    if let (Some(audio_path), Some(model_path)) = (&args.stt_input, &args.model) {
+    if let Some(audio_path) = &args.stt_input {
+        // Use default model if not provided
+        let model_path = args.model.as_ref().map(|p| p.as_path()).unwrap_or_else(|| {
+            std::path::Path::new("models/ggml-base.bin")
+        });
+
         match whisper::transcribe_audio(model_path, audio_path) {
             Ok(text) => {
-                println!("Transcription:");
-                println!("{}", text);
+                // If --emit-md is provided, write to file
+                if let Some(output_path) = &args.emit_md {
+                    match write_markdown_transcript(output_path, &text) {
+                        Ok(_) => {
+                            println!("Transcription written to: {:?}", output_path);
+                        }
+                        Err(e) => {
+                            eprintln!("Error writing markdown: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    // Otherwise print to stdout
+                    println!("Transcription:");
+                    println!("{}", text);
+                }
             }
             Err(e) => {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);
             }
         }
-    } else if args.stt_input.is_some() || args.model.is_some() {
-        eprintln!("Error: Both --stt-input and --model must be provided together");
-        std::process::exit(1);
     } else {
         // Run in GUI mode
         domain_model_note_taking_lib::run()
+    }
+}
+
+fn write_markdown_transcript(path: &PathBuf, text: &str) -> std::io::Result<()> {
+    use std::fs;
+    use std::io::Write;
+
+    // Create parent directories if they don't exist
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut file = fs::File::create(path)?;
+    writeln!(file, "# Transcription\n")?;
+    writeln!(file, "{}", text)?;
+    
+    Ok(())
+}
+
+fn initialize_markdown_file(path: &PathBuf) -> std::io::Result<()> {
+    use std::fs;
+    use std::io::Write;
+
+    // Create parent directories if they don't exist
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut file = fs::File::create(path)?;
+    writeln!(file, "# Live Transcription\n")?;
+    writeln!(file, "*Recording started...*\n")?;
+    
+    Ok(())
+}
+
+fn append_to_markdown(path: &PathBuf, utterance_id: usize, text: &str) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(path)?;
+    
+    writeln!(file, "## Segment {}\n", utterance_id)?;
+    writeln!(file, "{}\n", text)?;
+    
+    Ok(())
+}
+
+fn transcription_worker(
+    session: domain_model_note_taking_lib::audio_session::AudioSession,
+    model_path: PathBuf,
+    md_path: PathBuf,
+) {
+    use std::collections::HashSet;
+    use std::time::Duration;
+
+    println!("Transcription worker started");
+    
+    let mut processed_ids = HashSet::new();
+    
+    loop {
+        std::thread::sleep(Duration::from_millis(500));
+        
+        let utterances = session.get_utterances();
+        
+        for utterance in utterances {
+            if processed_ids.contains(&utterance.id) {
+                continue;
+            }
+            
+            println!("Transcribing segment {}...", utterance.id);
+            
+            match whisper::transcribe_audio(&model_path, &utterance.file_path) {
+                Ok(text) => {
+                    if let Err(e) = append_to_markdown(&md_path, utterance.id, &text) {
+                        eprintln!("Error appending to markdown: {}", e);
+                    } else {
+                        println!("Segment {} transcribed: {}", utterance.id, text.chars().take(50).collect::<String>());
+                    }
+                    processed_ids.insert(utterance.id);
+                }
+                Err(e) => {
+                    eprintln!("Error transcribing segment {}: {}", utterance.id, e);
+                }
+            }
+        }
     }
 }
 
@@ -100,6 +207,22 @@ fn run_streaming_mode(args: &Args) -> anyhow::Result<()> {
 
     println!("VAD Mode: {}", vad_mode_str);
     println!("Output Directory: {:?}", output_dir);
+    
+    // Get model path and output markdown path
+    let model_path = args.model.as_ref().map(|p| p.as_path()).unwrap_or_else(|| {
+        std::path::Path::new("models/ggml-base.bin")
+    });
+    
+    let emit_md = args.emit_md.clone();
+    
+    if let Some(ref md_path) = emit_md {
+        println!("Transcription output: {:?}", md_path);
+        // Initialize the markdown file
+        if let Err(e) = initialize_markdown_file(md_path) {
+            eprintln!("Error initializing markdown file: {}", e);
+            return Err(e.into());
+        }
+    }
     println!();
 
     let config = AudioSessionConfig {
@@ -110,6 +233,17 @@ fn run_streaming_mode(args: &Args) -> anyhow::Result<()> {
     };
 
     let session = AudioSession::new(config)?;
+    
+    // Start transcription thread if markdown output is enabled
+    if let Some(md_path) = emit_md {
+        let model_path_owned = model_path.to_path_buf();
+        let session_clone = session.clone();
+        
+        std::thread::spawn(move || {
+            transcription_worker(session_clone, model_path_owned, md_path);
+        });
+    }
+    
     session.start_recording()?;
 
     Ok(())
