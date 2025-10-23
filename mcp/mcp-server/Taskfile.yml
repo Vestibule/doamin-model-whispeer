@@ -1,0 +1,254 @@
+version: '3'
+
+vars:
+  MCP_SERVER: ./target/release/mcp-server
+  MCP_CLI: ./target/release/mcp-cli
+  SAMPLE_INPUT: samples/voice.json
+  ARTIFACTS_DIR: artifacts
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # Build tasks
+  build:
+    desc: Build all binaries in release mode
+    cmds:
+      - cargo build --release
+
+  build:server:
+    desc: Build MCP server only
+    cmds:
+      - cargo build --release --bin mcp-server
+
+  build:cli:
+    desc: Build CLI tool only
+    cmds:
+      - cargo build --release --bin mcp-cli
+
+  build:dev:
+    desc: Build in dev mode (faster, for development)
+    cmds:
+      - cargo build
+
+  # Test tasks
+  test:
+    desc: Run all tests
+    cmds:
+      - cargo test
+
+  test:unit:
+    desc: Run unit tests only
+    cmds:
+      - cargo test --lib
+
+  test:tools:
+    desc: Run tools module tests
+    cmds:
+      - cargo test tools:: -- --nocapture
+
+  test:orchestration:
+    desc: Run orchestration tests (including idempotence)
+    cmds:
+      - cargo test orchestration:: -- --nocapture
+
+  test:idempotence:
+    desc: Test idempotence (Model → Markdown → Model)
+    cmds:
+      - cargo test orchestration::idempotence -- --nocapture
+
+  # MCP Server tasks
+  mcp:list:
+    desc: List available MCP tools
+    cmds:
+      - echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | {{.MCP_SERVER}} | python3 -m json.tool
+
+  mcp:init:
+    desc: Initialize MCP server
+    cmds:
+      - echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | {{.MCP_SERVER}} | python3 -m json.tool
+
+  mcp:normalize:
+    desc: Test normalize_terms tool
+    cmds:
+      - |
+        cat << 'EOF' | {{.MCP_SERVER}} | python3 -m json.tool
+        {
+          "jsonrpc": "2.0",
+          "id": 2,
+          "method": "tools/call",
+          "params": {
+            "name": "normalize_terms",
+            "arguments": {
+              "input_lang": "fr",
+              "transcript": "Un système simple avec un User qui a un email unique et un nom."
+            }
+          }
+        }
+        EOF
+
+  mcp:validate:
+    desc: Test validate_model tool with sample data
+    cmds:
+      - |
+        cat << 'EOF' | {{.MCP_SERVER}} | python3 -m json.tool
+        {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "method": "tools/call",
+          "params": {
+            "name": "validate_model",
+            "arguments": {
+              "model": {
+                "entities": [
+                  {
+                    "id": "User",
+                    "name": "User",
+                    "attributes": [
+                      {"name": "id", "type": "uuid", "required": true, "unique": true}
+                    ],
+                    "primaryKey": ["id"]
+                  }
+                ],
+                "relations": [],
+                "invariants": []
+              }
+            }
+          }
+        }
+        EOF
+
+  # CLI tasks
+  cli:run:
+    desc: Run CLI with default sample
+    deps: [build:cli]
+    cmds:
+      - |
+        {{.MCP_CLI}} \
+          --dry-run-llm \
+          --input {{.SAMPLE_INPUT}} \
+          --emit-md {{.ARTIFACTS_DIR}}/spec.md \
+          --emit-mmd {{.ARTIFACTS_DIR}}/model.mmd
+
+  cli:trace:
+    desc: Run CLI with tracing enabled
+    deps: [build:cli]
+    env:
+      RUST_LOG: info,domain=debug
+    cmds:
+      - |
+        {{.MCP_CLI}} \
+          --trace \
+          --dry-run-llm \
+          --input {{.SAMPLE_INPUT}}
+
+  cli:retry:
+    desc: Run CLI with retry mechanism (3 attempts)
+    deps: [build:cli]
+    cmds:
+      - |
+        {{.MCP_CLI}} \
+          --dry-run-llm \
+          --input {{.SAMPLE_INPUT}} \
+          --retry 3
+
+  cli:full:
+    desc: Run full CLI pipeline with all options
+    deps: [build:cli]
+    env:
+      RUST_LOG: info,domain=debug
+    cmds:
+      - mkdir -p {{.ARTIFACTS_DIR}}
+      - |
+        {{.MCP_CLI}} \
+          --trace \
+          --dry-run-llm \
+          --input {{.SAMPLE_INPUT}} \
+          --emit-md {{.ARTIFACTS_DIR}}/spec.md \
+          --emit-mmd {{.ARTIFACTS_DIR}}/model.mmd \
+          --retry 2
+
+  # Lint and format tasks
+  lint:
+    desc: Run clippy linter
+    cmds:
+      - cargo clippy -- -D warnings
+
+  fmt:
+    desc: Format code with rustfmt
+    cmds:
+      - cargo fmt
+
+  fmt:check:
+    desc: Check code formatting
+    cmds:
+      - cargo fmt -- --check
+
+  # Clean tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - cargo clean
+      - rm -rf {{.ARTIFACTS_DIR}}
+
+  clean:artifacts:
+    desc: Clean generated artifacts only
+    cmds:
+      - rm -rf {{.ARTIFACTS_DIR}}
+
+  # Development workflow tasks
+  dev:check:
+    desc: Run all checks before commit (fmt, lint, test)
+    cmds:
+      - task: fmt:check
+      - task: lint
+      - task: test
+
+  dev:fix:
+    desc: Auto-fix formatting and linting issues
+    cmds:
+      - task: fmt
+      - cargo clippy --fix --allow-dirty
+
+  # Documentation tasks
+  doc:
+    desc: Generate and open Rust documentation
+    cmds:
+      - cargo doc --open --no-deps
+
+  doc:readme:
+    desc: Display README files
+    cmds:
+      - echo "=== Main README ==="
+      - cat README.md 2>/dev/null || echo "No main README found"
+      - echo ""
+      - echo "=== MCP Server README ==="
+      - cat README_MCP.md 2>/dev/null || echo "No MCP README found"
+
+  # Quick start tasks
+  quick:start:
+    desc: Quick start - build and run CLI with sample
+    cmds:
+      - task: build
+      - task: cli:run
+      - echo ""
+      - echo "✅ Artifacts generated in {{.ARTIFACTS_DIR}}/"
+      - ls -lh {{.ARTIFACTS_DIR}}/
+
+  quick:test:
+    desc: Quick test - run all tests
+    cmds:
+      - task: test
+      - echo ""
+      - echo "✅ All tests passed"
+
+  quick:demo:
+    desc: Quick demo - show MCP tools and run CLI
+    cmds:
+      - echo "=== Available MCP Tools ==="
+      - task: mcp:list
+      - echo ""
+      - echo "=== Running CLI Pipeline ==="
+      - task: cli:full
