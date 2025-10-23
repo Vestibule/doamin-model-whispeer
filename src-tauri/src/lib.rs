@@ -1,4 +1,7 @@
 pub mod audio_session;
+pub mod llm_integration;
+pub mod llm_router;
+pub mod mcp_client;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]

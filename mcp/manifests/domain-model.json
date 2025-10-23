@@ -1,0 +1,8 @@
+{
+  "name": "domain-model-mcp",
+  "command": "./target/release/mcp-server",
+  "env": {},
+  "args": [],
+  "transport": "stdio",
+  "tools": ["normalize_terms", "emit_markdown", "emit_mermaid", "validate_model"]
+}

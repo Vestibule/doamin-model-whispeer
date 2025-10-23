@@ -1,0 +1,8 @@
+{"speaker": "user", "text": "Je veux modéliser un système de gestion de bibliothèque"}
+{"speaker": "user", "text": "Un Livre a un titre, un ISBN unique, et une date de publication"}
+{"speaker": "user", "text": "Un Auteur a un nom et une biographie optionnelle"}
+{"speaker": "user", "text": "Un Livre peut avoir plusieurs Auteurs, au moins un"}
+{"speaker": "user", "text": "Un Auteur peut écrire zéro ou plusieurs Livres"}
+{"speaker": "user", "text": "Chaque Livre peut avoir plusieurs Exemplaires physiques"}
+{"speaker": "user", "text": "Un Exemplaire a un code unique et un statut: disponible, emprunté, ou perdu"}
+{"speaker": "user", "text": "Invariant important: un Exemplaire ne peut être emprunté que s'il est disponible"}
