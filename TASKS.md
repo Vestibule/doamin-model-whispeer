@@ -21,11 +21,12 @@
   - Tauri app uses PTT mode by default for better control and quality
   - CLI mode still uses VAD-based automatic segmentation
 
-- [x] **Upgrade Whisper Model to Medium** (2025-01-24)
-  - Downloaded ggml-medium.bin (1.5GB) for better transcription accuracy
-  - Replaced ggml-small-q5_1.bin (quantified, less accurate) with full precision model
-  - Medium model provides significantly better French transcription
-  - Default model path updated in lib.rs
+- [x] **Optimize Whisper Model Selection** (2025-01-24)
+  - Downloaded ggml-small.bin (466MB) as default - good speed/quality balance
+  - Downloaded ggml-medium.bin (1.5GB) as alternative for better quality
+  - Replaced ggml-small-q5_1.bin (quantified, less accurate)
+  - Default model: small (3x faster than medium, still accurate for French)
+  - Can switch to medium via WHISPER_MODEL_PATH environment variable
 
 ## In Progress
 

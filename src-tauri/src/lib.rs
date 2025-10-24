@@ -155,7 +155,7 @@ pub fn run() {
         .setup(|app| {
             // Initialize RecordingManager
             let model_path_str = std::env::var("WHISPER_MODEL_PATH")
-                .unwrap_or_else(|_| "models/whisper/ggml-medium.bin".to_string());
+                .unwrap_or_else(|_| "models/whisper/ggml-small.bin".to_string());
             
             // Resolve relative path
             let model_path = if std::path::Path::new(&model_path_str).is_absolute() {
