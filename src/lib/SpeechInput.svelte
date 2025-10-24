@@ -3,6 +3,8 @@
   import { listen } from '@tauri-apps/api/event';
   import type { Snippet } from "svelte";
   import type { TranscriptionResult } from './tauri';
+  import { Button, Spinner } from 'flowbite-svelte';
+  import { MicrophoneSolid } from 'flowbite-svelte-icons';
 
   interface Props {
     value?: string;
@@ -95,31 +97,37 @@
   }
 </script>
 
-<div class="speech-input">
-  <button
+<div class="flex items-center gap-2">
+  <Button
     type="button"
-    class="mic-button"
-    class:recording={isRecording}
-    class:processing={status === 'processing'}
+    pill
+    size="lg"
+    color={isRecording ? "red" : "blue"}
+    class="{isRecording ? 'animate-pulse shadow-lg' : ''} {status === 'processing' ? 'opacity-70' : ''} transition-all"
     onclick={toggleRecording}
     title={!isTauri ? "Requires Tauri app" : isRecording ? "Stop recording" : "Start recording"}
     disabled={!isTauri || status === 'processing'}
   >
     {#if status === 'processing'}
-      ⏳
-    {:else if isRecording}
-      🔴
+      <Spinner size="6" color="white" />
     {:else}
-      🎤
+      <MicrophoneSolid class="w-5 h-5" />
     {/if}
-  </button>
+  </Button>
 
   {#if error}
-    <div class="error-message">{error}</div>
+    <Alert color="red" class="max-w-md" border>
+      {error}
+    </Alert>
   {/if}
 
   {#if status === 'processing'}
-    <div class="status-message">Processing audio...</div>
+    <Alert color="blue" class="max-w-md" border>
+      <span class="flex items-center gap-2">
+        <Spinner size="4" color="blue" />
+        Processing audio...
+      </span>
+    </Alert>
   {/if}
 
   {#if children}
@@ -127,98 +135,3 @@
   {/if}
 </div>
 
-<style>
-  .speech-input {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .mic-button {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    border: 2px solid #ccc;
-    background-color: white;
-    cursor: pointer;
-    font-size: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
-  }
-
-  .mic-button:hover {
-    border-color: #396cd8;
-    transform: scale(1.05);
-  }
-
-  .mic-button.recording {
-    background-color: #fee;
-    border-color: #f00;
-    animation: pulse 1.5s infinite;
-  }
-
-  .mic-button.processing {
-    background-color: #ffa;
-    border-color: #fa0;
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  @keyframes pulse {
-    0%, 100% {
-      box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
-    }
-    50% {
-      box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
-    }
-  }
-
-  .status-message {
-    padding: 0.5rem 1rem;
-    background-color: #e0f7ff;
-    border: 1px solid #17a2b8;
-    border-radius: 4px;
-    color: #0c5460;
-    font-size: 0.875rem;
-  }
-
-  .error-message {
-    padding: 0.5rem 1rem;
-    background-color: #fee;
-    border: 1px solid #fcc;
-    border-radius: 4px;
-    color: #c00;
-    font-size: 0.875rem;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .mic-button {
-      background-color: #1a1a1a;
-      border-color: #555;
-    }
-
-    .mic-button.recording {
-      background-color: #4a1f1f;
-      border-color: #f00;
-    }
-
-    .mic-button.processing {
-      background-color: #3d3d1a;
-      border-color: #fa0;
-    }
-
-    .status-message {
-      background-color: #1a3d3d;
-      border-color: #17a2b8;
-      color: #7dd3e0;
-    }
-
-    .error-message {
-      background-color: #4a1f1f;
-      border-color: #8b3a3a;
-      color: #ffb3b3;
-    }
-  }
-</style>

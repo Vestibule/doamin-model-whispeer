@@ -1,5 +1,7 @@
 <script lang="ts">
   import { listAudioDevices, setAudioDevice, type AudioDevice } from './tauri';
+  import { Select, Button, Alert, Label, Spinner } from 'flowbite-svelte';
+  import { RefreshOutline } from 'flowbite-svelte-icons';
 
   let devices = $state<AudioDevice[]>([]);
   let selectedDevice = $state<string>("");
@@ -53,134 +55,49 @@
 </script>
 
 {#if isTauri}
-  <div class="device-selector">
-    <label for="audio-device">
+  <div class="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-4 flex-wrap border border-blue-200 dark:border-blue-800">
+    <Label class="font-semibold whitespace-nowrap text-blue-900 dark:text-blue-100">
       🎤 Audio Input:
-    </label>
+    </Label>
     
     {#if loading}
-      <span class="loading">Loading devices...</span>
+      <div class="flex items-center gap-2">
+        <Spinner size="4" color="blue" />
+        <span class="text-sm text-blue-700 dark:text-blue-300 italic">Loading devices...</span>
+      </div>
     {:else if devices.length > 0}
-      <select 
+      <Select
         id="audio-device"
-        value={selectedDevice}
-        onchange={handleDeviceChange}
+        bind:value={selectedDevice}
+        on:change={handleDeviceChange}
+        class="flex-1 min-w-[200px]"
       >
         {#each devices as device}
           <option value={device.name}>
             {device.name} {device.is_default ? '(default)' : ''}
           </option>
         {/each}
-      </select>
+      </Select>
     {:else}
-      <span class="no-devices">No audio devices found</span>
+      <span class="text-sm text-blue-700 dark:text-blue-300 italic">No audio devices found</span>
     {/if}
 
-    <button 
-      type="button"
+    <Button 
+      size="sm"
+      color="blue"
       onclick={loadDevices}
       disabled={loading}
       title="Refresh device list"
+      class="!p-2"
     >
-      🔄
-    </button>
+      <RefreshOutline class="w-4 h-4" />
+    </Button>
 
     {#if error}
-      <div class="error">{error}</div>
+      <Alert color="red" class="w-full mt-2" border>
+        {error}
+      </Alert>
     {/if}
   </div>
 {/if}
 
-<style>
-  .device-selector {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    background-color: #f5f5f5;
-    border-radius: 4px;
-    font-size: 0.875rem;
-    flex-wrap: wrap;
-  }
-
-  label {
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
-  select {
-    flex: 1;
-    min-width: 200px;
-    padding: 0.4rem 0.8rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background-color: white;
-    cursor: pointer;
-    font-size: 0.875rem;
-  }
-
-  select:focus {
-    outline: none;
-    border-color: #396cd8;
-  }
-
-  button {
-    padding: 0.4rem 0.8rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background-color: white;
-    cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.2s;
-  }
-
-  button:hover:not(:disabled) {
-    border-color: #396cd8;
-    transform: scale(1.05);
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .loading,
-  .no-devices {
-    color: #666;
-    font-style: italic;
-  }
-
-  .error {
-    width: 100%;
-    padding: 0.5rem;
-    background-color: #fee;
-    border: 1px solid #fcc;
-    border-radius: 4px;
-    color: #c00;
-    font-size: 0.875rem;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .device-selector {
-      background-color: #2a2a2a;
-    }
-
-    select,
-    button {
-      background-color: #1a1a1a;
-      border-color: #555;
-      color: #f6f6f6;
-    }
-
-    .loading,
-    .no-devices {
-      color: #999;
-    }
-
-    .error {
-      background-color: #4a1f1f;
-      border-color: #8b3a3a;
-      color: #ffb3b3;
-    }
-  }
-</style>

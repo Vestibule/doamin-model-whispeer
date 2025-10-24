@@ -53,3 +53,6 @@ Tauri commands are the primary way the frontend communicates with the backend:
 - `src-tauri/tauri.conf.json` - Main Tauri configuration (app metadata, build commands, window settings)
 - `package.json` - Frontend dependencies and npm scripts
 - `src-tauri/Cargo.toml` - Rust dependencies and package metadata
+
+## Wrap Rules
+To test the build, use `build`, not `dev`

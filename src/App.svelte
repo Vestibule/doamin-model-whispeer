@@ -3,6 +3,7 @@
   import { orchestrate, type OrchestrateResult } from "./lib/tauri";
   import SpeechInput from "./lib/SpeechInput.svelte";
   import AudioDeviceSelector from "./lib/AudioDeviceSelector.svelte";
+  import { Card, Button, Textarea, Input, Alert, Heading, Hr } from 'flowbite-svelte';
 
   let greetMsg = $state("");
   let name = $state("");
@@ -36,277 +37,75 @@
   }
 </script>
 
-<main class="container">
-  <h1>Domain Model Note Taking</h1>
+<main class="min-h-screen bg-gray-50 dark:bg-gray-900">
+  <div class="container mx-auto px-4 py-8 max-w-6xl">
+    <Heading tag="h1" class="text-center mb-8 text-gray-900 dark:text-white">Domain Model Note Taking</Heading>
 
-  <div class="orchestrate-section">
-    <h2>Orchestrate Transcript</h2>
-    
-    <AudioDeviceSelector />
-    
-    <form onsubmit={(e) => { e.preventDefault(); handleOrchestrate(); }}>
-      <div class="textarea-with-mic">
-        <textarea
-          bind:value={transcript}
-          placeholder="Enter your transcript here or click the microphone..."
-          rows="5"
-          disabled={loading}
-        ></textarea>
-        <div class="mic-container">
-          <SpeechInput bind:value={transcript} />
-        </div>
-      </div>
-      <button type="submit" disabled={loading}>
-        {loading ? "Processing..." : "Orchestrate"}
-      </button>
-    </form>
-
-    {#if error}
-      <div class="error">
-        <strong>Error:</strong> {error}
-      </div>
-    {/if}
-
-    {#if result}
-      <div class="result">
-        <h3>Results</h3>
+    <div class="mb-8">
+      <Card size="xl" class="w-full">
+        <Heading tag="h2" class="mb-4">Orchestrate Transcript</Heading>
+      
+        <AudioDeviceSelector />
         
-        <div class="result-section">
-          <h4>Domain Model</h4>
-          <pre>{JSON.stringify(result.model, null, 2)}</pre>
-        </div>
+        <form onsubmit={(e) => { e.preventDefault(); handleOrchestrate(); }} class="space-y-4">
+          <div class="relative">
+            <Textarea
+              bind:value={transcript}
+              placeholder="Enter your transcript here or click the microphone..."
+              rows="8"
+              disabled={loading}
+              class="pr-16"
+            />
+            <div class="absolute right-2 top-2">
+              <SpeechInput bind:value={transcript} />
+            </div>
+          </div>
+          <Button type="submit" disabled={loading} color="blue" size="lg" class="w-full">
+            {loading ? "Processing..." : "Orchestrate"}
+          </Button>
+        </form>
 
-        <div class="result-section">
-          <h4>Mermaid Diagram</h4>
-          <pre>{result.mermaid}</pre>
-        </div>
+        {#if error}
+          <Alert color="red" class="mt-4" border>
+            <span class="font-medium">Error:</span> {error}
+          </Alert>
+        {/if}
 
-        <div class="result-section">
-          <h4>Markdown Documentation</h4>
-          <pre>{result.markdown}</pre>
-        </div>
-      </div>
-    {/if}
-  </div>
+        {#if result}
+          <div class="mt-6 space-y-4">
+            <Heading tag="h3" class="text-lg">Results</Heading>
+            
+            <Card size="lg">
+              <Heading tag="h4" class="mb-3 text-base">Domain Model</Heading>
+              <pre class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono border border-gray-200 dark:border-gray-700">{JSON.stringify(result.model, null, 2)}</pre>
+            </Card>
 
-  <hr />
+            <Card size="lg">
+              <Heading tag="h4" class="mb-3 text-base">Mermaid Diagram</Heading>
+              <pre class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono border border-gray-200 dark:border-gray-700">{result.mermaid}</pre>
+            </Card>
 
-  <div class="greet-section">
-    <h2>Test Greet Command</h2>
-    <form class="row" onsubmit={(e) => { e.preventDefault(); greet(); }}>
-      <input id="greet-input" bind:value={name} placeholder="Enter a name..." />
-      <button type="submit">Greet</button>
-    </form>
-    <p>{greetMsg}</p>
+            <Card size="lg">
+              <Heading tag="h4" class="mb-3 text-base">Markdown Documentation</Heading>
+              <pre class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono border border-gray-200 dark:border-gray-700 whitespace-pre-wrap">{result.markdown}</pre>
+            </Card>
+          </div>
+        {/if}
+      </Card>
+    </div>
+
+    <Hr class="my-8" />
+
+    <Card size="xl" class="w-full">
+      <Heading tag="h2" class="mb-4">Test Greet Command</Heading>
+      <form onsubmit={(e) => { e.preventDefault(); greet(); }} class="space-y-4">
+        <Input bind:value={name} placeholder="Enter a name..." size="lg" />
+        <Button type="submit" color="blue">Greet</Button>
+      </form>
+      {#if greetMsg}
+        <Alert color="green" class="mt-4">{greetMsg}</Alert>
+      {/if}
+    </Card>
   </div>
 </main>
 
-<style>
-.orchestrate-section,
-.greet-section {
-  margin: 2rem 0;
-  width: 100%;
-  max-width: 800px;
-}
-
-.textarea-with-mic {
-  position: relative;
-  margin-bottom: 1rem;
-}
-
-textarea {
-  width: 100%;
-  padding: 0.8em;
-  padding-right: 60px; /* Space for microphone button */
-  border-radius: 8px;
-  border: 1px solid #ccc;
-  font-family: inherit;
-  font-size: 1em;
-  resize: vertical;
-}
-
-.mic-container {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-}
-
-textarea:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.error {
-  background-color: #fee;
-  border: 1px solid #fcc;
-  border-radius: 8px;
-  padding: 1rem;
-  margin: 1rem 0;
-  color: #c00;
-}
-
-.result {
-  margin-top: 2rem;
-  text-align: left;
-}
-
-.result-section {
-  margin: 1.5rem 0;
-  background-color: #f9f9f9;
-  border-radius: 8px;
-  padding: 1rem;
-}
-
-.result-section h4 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-}
-
-.result-section pre {
-  background-color: #fff;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 1rem;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-hr {
-  border: none;
-  border-top: 1px solid #ddd;
-  margin: 2rem 0;
-}
-
-:global(:root) {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-:global(.container) {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-:global(.logo) {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-:global(.logo.tauri:hover) {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-:global(.row) {
-  display: flex;
-  justify-content: center;
-}
-
-:global(a) {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-:global(a:hover) {
-  color: #535bf2;
-}
-
-:global(h1) {
-  text-align: center;
-}
-
-:global(input),
-:global(button) {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-:global(button) {
-  cursor: pointer;
-}
-
-:global(button:hover) {
-  border-color: #396cd8;
-}
-:global(button:active) {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-:global(input),
-:global(button) {
-  outline: none;
-}
-
-:global(#greet-input) {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :global(:root) {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  :global(a:hover) {
-    color: #24c8db;
-  }
-
-  :global(input),
-  :global(button) {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  :global(button:active) {
-    background-color: #0f0f0f69;
-  }
-
-  textarea {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-    border-color: #555;
-  }
-
-  .error {
-    background-color: #4a1f1f;
-    border-color: #8b3a3a;
-    color: #ffb3b3;
-  }
-
-  .result-section {
-    background-color: #1a1a1a;
-  }
-
-  .result-section pre {
-    background-color: #0f0f0f;
-    border-color: #444;
-    color: #f6f6f6;
-  }
-}
-</style>
