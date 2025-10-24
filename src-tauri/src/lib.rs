@@ -97,15 +97,30 @@ async fn stop_recording(state: tauri::State<'_, Arc<Mutex<Option<recording_manag
 }
 
 #[tauri::command]
-async fn transcribe_audio(audio_path: String) -> Result<speech_to_text::TranscriptionResult, String> {
+async fn transcribe_audio(
+    audio_path: String,
+    app: tauri::AppHandle,
+) -> Result<speech_to_text::TranscriptionResult, String> {
     use crate::speech_to_text::SpeechToText;
     use std::env;
     use std::path::PathBuf;
     
-    let model_path = env::var("WHISPER_MODEL_PATH")
-        .unwrap_or_else(|_| "models/ggml-base.en.bin".to_string());
+    let model_path = if let Ok(path) = env::var("WHISPER_MODEL_PATH") {
+        PathBuf::from(path)
+    } else {
+        // Try to get from bundled resources
+        let resource_path = app.path().resolve("ggml-small.bin", tauri::path::BaseDirectory::Resource)
+            .map_err(|e| format!("Failed to resolve resource path: {}", e))?;
+        
+        if resource_path.exists() {
+            resource_path
+        } else {
+            // Fallback to dev mode path
+            PathBuf::from("models/whisper/ggml-small.bin")
+        }
+    };
     
-    let stt = SpeechToText::new(PathBuf::from(model_path));
+    let stt = SpeechToText::new(model_path);
     let audio_path_buf = PathBuf::from(audio_path);
     
     stt.transcribe_file(&audio_path_buf)
@@ -154,26 +169,41 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Initialize RecordingManager
-            let model_path_str = std::env::var("WHISPER_MODEL_PATH")
-                .unwrap_or_else(|_| "models/whisper/ggml-small.bin".to_string());
-            
-            // Resolve relative path
-            let model_path = if std::path::Path::new(&model_path_str).is_absolute() {
-                std::path::PathBuf::from(model_path_str)
+            let model_path = if let Ok(path_str) = std::env::var("WHISPER_MODEL_PATH") {
+                std::path::PathBuf::from(path_str)
             } else {
-                // In dev mode, resolve from project root (parent of src-tauri)
-                // In production, this should be bundled as a resource
-                let base_dir = std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
-                
-                // If we're in src-tauri directory, go up one level
-                let project_root = if base_dir.ends_with("src-tauri") {
-                    base_dir.parent().unwrap_or(&base_dir).to_path_buf()
+                // Try to get from bundled resources first
+                if let Ok(resource_path) = app.path().resolve("ggml-small.bin", tauri::path::BaseDirectory::Resource) {
+                    if resource_path.exists() {
+                        log::info!("[Setup] Using bundled model from resources: {:?}", resource_path);
+                        resource_path
+                    } else {
+                        // Fallback to dev mode path
+                        let base_dir = std::env::current_dir()
+                            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                        
+                        // If we're in src-tauri directory, go up one level
+                        let project_root = if base_dir.ends_with("src-tauri") {
+                            base_dir.parent().unwrap_or(&base_dir).to_path_buf()
+                        } else {
+                            base_dir
+                        };
+                        
+                        let dev_path = project_root.join("models/whisper/ggml-small.bin");
+                        log::info!("[Setup] Using dev mode model path: {:?}", dev_path);
+                        dev_path
+                    }
                 } else {
-                    base_dir
-                };
-                
-                project_root.join(&model_path_str)
+                    log::error!("[Setup] Failed to resolve resource path, using dev mode fallback");
+                    let base_dir = std::env::current_dir()
+                        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                    let project_root = if base_dir.ends_with("src-tauri") {
+                        base_dir.parent().unwrap_or(&base_dir).to_path_buf()
+                    } else {
+                        base_dir
+                    };
+                    project_root.join("models/whisper/ggml-small.bin")
+                }
             };
             
             log::info!("[Setup] Initializing RecordingManager with model path: {:?}", model_path);
