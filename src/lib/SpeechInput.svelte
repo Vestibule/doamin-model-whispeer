@@ -19,6 +19,7 @@
   let error = $state("");
   let status = $state("idle");
   let isTauri = $state(false);
+  let isSpacebarPressed = $state(false);
 
   // Check if running in Tauri environment
   $effect(() => {
@@ -64,6 +65,67 @@
     };
   });
 
+  // Keyboard event handlers for push-to-talk with spacebar
+  $effect(() => {
+    if (!isTauri) return;
+
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      // Only trigger on spacebar and ignore if already pressed (prevents key repeat)
+      if (event.code === 'Space' && !isSpacebarPressed && !isRecording) {
+        // Ignore if user is typing in an input field
+        const target = event.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+          return;
+        }
+        
+        event.preventDefault();
+        isSpacebarPressed = true;
+        error = "";
+        
+        try {
+          console.log('[SpeechInput] Spacebar pressed - starting recording...');
+          await startRecording();
+          isRecording = true;
+        } catch (e) {
+          console.error('[SpeechInput] Error starting recording:', e);
+          error = String(e);
+          isSpacebarPressed = false;
+        }
+      }
+    };
+
+    const handleKeyUp = async (event: KeyboardEvent) => {
+      // Only trigger on spacebar release
+      if (event.code === 'Space' && isSpacebarPressed && isRecording) {
+        // Ignore if user is typing in an input field
+        const target = event.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+          return;
+        }
+        
+        event.preventDefault();
+        isSpacebarPressed = false;
+        
+        try {
+          console.log('[SpeechInput] Spacebar released - stopping recording...');
+          await stopRecording();
+          isRecording = false;
+        } catch (e) {
+          console.error('[SpeechInput] Error stopping recording:', e);
+          error = String(e);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  });
+
   async function toggleRecording() {
     console.log('[SpeechInput] toggleRecording called, isTauri:', isTauri, 'isRecording:', isRecording);
     
@@ -97,23 +159,37 @@
   }
 </script>
 
-<div class="flex items-center gap-2">
-  <Button
-    type="button"
-    pill
-    size="lg"
-    color={isRecording ? "red" : "blue"}
-    class="{isRecording ? 'animate-pulse shadow-lg' : ''} {status === 'processing' ? 'opacity-70' : ''} transition-all"
-    onclick={toggleRecording}
-    title={!isTauri ? "Requires Tauri app" : isRecording ? "Stop recording" : "Start recording"}
-    disabled={!isTauri || status === 'processing'}
-  >
-    {#if status === 'processing'}
-      <Spinner size="6" color="white" />
-    {:else}
-      <MicrophoneSolid class="w-5 h-5" />
+<div class="flex flex-col gap-2">
+  <div class="flex items-center gap-2">
+    <Button
+      type="button"
+      pill
+      size="lg"
+      color={isRecording ? "red" : "blue"}
+      class="{isRecording ? 'animate-pulse shadow-lg' : ''} {status === 'processing' ? 'opacity-70' : ''} transition-all"
+      onclick={toggleRecording}
+      title={!isTauri ? "Requires Tauri app" : isRecording ? "Stop recording" : "Start recording"}
+      disabled={!isTauri || status === 'processing'}
+    >
+      {#if status === 'processing'}
+        <Spinner size="6" color="white" />
+      {:else}
+        <MicrophoneSolid class="w-5 h-5" />
+      {/if}
+    </Button>
+
+    {#if isTauri && !isRecording && status !== 'processing'}
+      <span class="text-sm text-gray-500 dark:text-gray-400">
+        Hold <kbd class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg dark:bg-gray-600 dark:text-gray-100 dark:border-gray-500">Space</kbd> to record
+      </span>
     {/if}
-  </Button>
+
+    {#if isRecording}
+      <span class="text-sm font-medium text-red-600 dark:text-red-400 animate-pulse">
+        Recording... (release Space to transcribe)
+      </span>
+    {/if}
+  </div>
 
   {#if error}
     <Alert color="red" class="max-w-md" border>
