@@ -1,4 +1,5 @@
 use crate::audio_session::{AudioSession, AudioSessionConfig};
+use crate::audio_enhancement::{AudioEnhancer, AudioEnhancementConfig};
 use crate::speech_to_text::SpeechToText;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
@@ -19,6 +20,7 @@ pub struct RecordingManager {
     stt: Arc<SpeechToText>,
     app_handle: AppHandle,
     selected_device: Arc<Mutex<Option<String>>>,
+    enhancement_config: Arc<Mutex<AudioEnhancementConfig>>,
 }
 
 impl RecordingManager {
@@ -29,6 +31,7 @@ impl RecordingManager {
             stt: Arc::new(SpeechToText::new(model_path)),
             app_handle,
             selected_device: Arc::new(Mutex::new(None)),
+            enhancement_config: Arc::new(Mutex::new(AudioEnhancementConfig::default())),
         }
     }
 
@@ -59,6 +62,7 @@ impl RecordingManager {
         let session_arc = Arc::clone(&self.session);
         let stt_clone = Arc::clone(&self.stt);
         let app_handle = self.app_handle.clone();
+        let enhancement_config = self.enhancement_config.lock().unwrap().clone();
 
         // Store session
         *self.session.lock().unwrap() = Some(session.clone());
@@ -93,14 +97,61 @@ impl RecordingManager {
                 // Transcribe all utterances
                 for utterance in utterances {
                     log::info!("Transcribing utterance {}: {:?}", utterance.id, utterance.file_path);
-                    match stt_clone.transcribe_file(&utterance.file_path) {
-                        Ok(result) => {
-                            log::info!("Transcription successful: {}", result.text);
-                            let _ = app_handle.emit("transcription-result", &result);
+                    
+                    // Appliquer l'amélioration audio avant transcription
+                    let enhanced_path = utterance.file_path.with_extension("enhanced.wav");
+                    
+                    // Créer l'enhancer avec le sample rate du fichier (detecté depuis le nom de fichier ou par défaut 48kHz)
+                    let sample_rate = 48000; // TODO: détecter depuis le fichier WAV
+                    
+                    match AudioEnhancer::new(sample_rate, enhancement_config.clone()) {
+                        Ok(mut enhancer) => {
+                            match enhancer.process_file(&utterance.file_path, &enhanced_path) {
+                                Ok(_) => {
+                                    log::info!("Audio enhancement applied successfully");
+                                    // Transcrire le fichier amélioré
+                                    match stt_clone.transcribe_file(&enhanced_path) {
+                                        Ok(result) => {
+                                            log::info!("Transcription successful: {}", result.text);
+                                            let _ = app_handle.emit("transcription-result", &result);
+                                        }
+                                        Err(e) => {
+                                            log::error!("Transcription failed: {}", e);
+                                            let _ = app_handle.emit("transcription-error", format!("{}", e));
+                                        }
+                                    }
+                                    // Supprimer le fichier temporaire amélioré
+                                    let _ = std::fs::remove_file(&enhanced_path);
+                                }
+                                Err(e) => {
+                                    log::warn!("Audio enhancement failed, using original file: {}", e);
+                                    // Fallback: transcrire le fichier original
+                                    match stt_clone.transcribe_file(&utterance.file_path) {
+                                        Ok(result) => {
+                                            log::info!("Transcription successful: {}", result.text);
+                                            let _ = app_handle.emit("transcription-result", &result);
+                                        }
+                                        Err(e) => {
+                                            log::error!("Transcription failed: {}", e);
+                                            let _ = app_handle.emit("transcription-error", format!("{}", e));
+                                        }
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
-                            log::error!("Transcription failed: {}", e);
-                            let _ = app_handle.emit("transcription-error", format!("{}", e));
+                            log::warn!("Failed to create audio enhancer: {}", e);
+                            // Fallback: transcrire le fichier original
+                            match stt_clone.transcribe_file(&utterance.file_path) {
+                                Ok(result) => {
+                                    log::info!("Transcription successful: {}", result.text);
+                                    let _ = app_handle.emit("transcription-result", &result);
+                                }
+                                Err(e) => {
+                                    log::error!("Transcription failed: {}", e);
+                                    let _ = app_handle.emit("transcription-error", format!("{}", e));
+                                }
+                            }
                         }
                     }
                 }

@@ -1,4 +1,5 @@
 pub mod audio_session;
+pub mod audio_enhancement;
 pub mod llm_integration;
 pub mod llm_router;
 pub mod mcp_client;
