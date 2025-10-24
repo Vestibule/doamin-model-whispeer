@@ -1,7 +1,43 @@
-# Tauri + Vue + TypeScript
+# Domain Model Note Taking
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Application Tauri pour la prise de notes avec génération automatique de modèles de domaine.
+
+## Stack technique
+
+- **Frontend**: Svelte 5 (avec runes) + TypeScript
+- **Backend**: Rust + Tauri 2
+- **Build**: Vite 6
+- **Package Manager**: pnpm
+
+## Démarrage rapide
+
+### Développement
+
+```bash
+# Frontend seul (pas d'accès aux commandes Tauri)
+pnpm dev
+
+# Application complète (recommandé)
+pnpm tauri dev
+```
+
+⚠️ **Important**: Pour utiliser la commande `orchestrate` et les autres fonctionnalités Tauri, vous devez utiliser `pnpm tauri dev`
+
+### Build de production
+
+```bash
+pnpm tauri build
+```
+
+## Documentation
+
+- **[DEV_GUIDE.md](./DEV_GUIDE.md)** - Guide de développement et résolution des erreurs
+- **[SVELTE5.md](./SVELTE5.md)** - Migration et syntaxe Svelte 5
+- **[ORCHESTRATE.md](./ORCHESTRATE.md)** - Documentation de la commande `orchestrate`
+- **[SPEECH_TO_TEXT.md](./SPEECH_TO_TEXT.md)** - Intégration reconnaissance vocale
+- **[BACKEND_RECORDING.md](./BACKEND_RECORDING.md)** - Enregistrement audio backend avec VAD
+- **[WARP.md](./WARP.md)** - Configuration du projet pour Warp
 
 ## Recommended IDE Setup
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- [VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)

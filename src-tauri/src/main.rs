@@ -230,6 +230,7 @@ fn run_streaming_mode(args: &Args) -> anyhow::Result<()> {
         min_utterance_duration_ms: 300,
         output_dir,
         vad_mode,
+        device_name: None,
     };
 
     let session = AudioSession::new(config)?;

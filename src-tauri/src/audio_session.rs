@@ -4,6 +4,7 @@ use log::{debug, info, warn};
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use webrtc_vad::{Vad, VadMode};
 
@@ -29,6 +30,8 @@ pub struct AudioSessionConfig {
     pub output_dir: PathBuf,
     /// Mode VAD (Quality, LowBitrate, Aggressive, VeryAggressive)
     pub vad_mode: VadMode,
+    /// Nom optionnel de l'interface audio à utiliser
+    pub device_name: Option<String>,
 }
 
 impl Clone for AudioSessionConfig {
@@ -43,6 +46,7 @@ impl Clone for AudioSessionConfig {
                 VadMode::Aggressive => VadMode::Aggressive,
                 VadMode::VeryAggressive => VadMode::VeryAggressive,
             },
+            device_name: self.device_name.clone(),
         }
     }
 }
@@ -60,6 +64,7 @@ impl std::fmt::Debug for AudioSessionConfig {
             .field("min_utterance_duration_ms", &self.min_utterance_duration_ms)
             .field("output_dir", &self.output_dir)
             .field("vad_mode", &vad_mode_repr)
+            .field("device_name", &self.device_name)
             .finish()
     }
 }
@@ -71,6 +76,7 @@ impl Default for AudioSessionConfig {
             min_utterance_duration_ms: 300,
             output_dir: std::env::temp_dir(),
             vad_mode: VadMode::Aggressive,
+            device_name: None,
         }
     }
 }
@@ -94,6 +100,7 @@ pub struct AudioSession {
     silence_frames: Arc<Mutex<u32>>,
     utterance_counter: Arc<Mutex<usize>>,
     is_speaking: Arc<Mutex<bool>>,
+    stop_flag: Arc<AtomicBool>,
 }
 
 impl AudioSession {
@@ -122,15 +129,25 @@ impl AudioSession {
             silence_frames: Arc::new(Mutex::new(0)),
             utterance_counter: Arc::new(Mutex::new(0)),
             is_speaking: Arc::new(Mutex::new(false)),
+            stop_flag: Arc::new(AtomicBool::new(false)),
         })
     }
 
     /// Démarre la capture audio et la détection d'utterances
     pub fn start_recording(&self) -> Result<()> {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .context("No input device available")?;
+        
+        // Select device based on config
+        let device = if let Some(ref device_name) = self.config.device_name {
+            info!("Looking for audio device: {}", device_name);
+            host.input_devices()
+                .context("Failed to enumerate input devices")?
+                .find(|d| d.name().map(|n| n == *device_name).unwrap_or(false))
+                .ok_or_else(|| anyhow::anyhow!("Audio device '{}' not found", device_name))?
+        } else {
+            host.default_input_device()
+                .context("No input device available")?
+        };
 
         let config = device
             .default_input_config()
@@ -237,13 +254,24 @@ impl AudioSession {
 
         stream.play()?;
 
-        info!("Recording started. Press Ctrl+C to stop.");
+        info!("Recording started. Waiting for stop signal...");
         info!("Utterances will be saved to: {:?}", self.config.output_dir);
 
-        // Garder le stream actif
-        std::thread::park();
+        // Garder le stream actif jusqu'au signal d'arrêt
+        while !self.stop_flag.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
+        info!("Stop signal received, ending recording");
+        drop(stream);
 
         Ok(())
+    }
+
+    /// Arrête l'enregistrement en cours
+    pub fn stop(&self) {
+        info!("Stopping recording...");
+        self.stop_flag.store(true, Ordering::Relaxed);
     }
 
     /// Récupère toutes les utterances enregistrées
