@@ -124,6 +124,8 @@ pub struct AudioSession {
     // AGC state
     agc_current_gain: Arc<Mutex<f32>>,
     agc_peak_level: Arc<Mutex<f32>>,
+    // Sample rate du device
+    sample_rate: Arc<Mutex<u32>>,
 }
 
 impl AudioSession {
@@ -155,6 +157,7 @@ impl AudioSession {
             stop_flag: Arc::new(AtomicBool::new(false)),
             agc_current_gain: Arc::new(Mutex::new(1.0)),
             agc_peak_level: Arc::new(Mutex::new(0.0)),
+            sample_rate: Arc::new(Mutex::new(16000)), // Default, sera mis à jour au démarrage
         })
     }
 
@@ -178,11 +181,16 @@ impl AudioSession {
             .default_input_config()
             .context("Failed to get default input config")?;
 
+        let actual_sample_rate = config.sample_rate().0;
         info!("Audio input device: {}", device.name()?);
-        info!("Sample rate: {} Hz", config.sample_rate().0);
+        info!("Sample rate: {} Hz", actual_sample_rate);
         info!("Channels: {}", config.channels());
+        
+        // Stocker le sample rate réel
+        *self.sample_rate.lock().unwrap() = actual_sample_rate;
 
         // Clone des Arc pour le stream
+        let sample_rate_arc = Arc::clone(&self.sample_rate);
         let vad = Arc::clone(&self.vad);
         let current_buffer = Arc::clone(&self.current_buffer);
         let silence_frames = Arc::clone(&self.silence_frames);
@@ -288,7 +296,8 @@ impl AudioSession {
 
                         // Vérifier si le silence est assez long pour terminer l'utterance
                         if *silence >= session_config.silence_duration_ms {
-                            let duration_ms = (buffer.len() as u32 * 1000) / 16000;
+                            let sample_rate = *sample_rate_arc.lock().unwrap();
+                            let duration_ms = (buffer.len() as u32 * 1000) / sample_rate;
                             
                             // Sauvegarder l'utterance si elle est assez longue
                             if duration_ms >= session_config.min_utterance_duration_ms {
@@ -301,7 +310,7 @@ impl AudioSession {
                                 );
 
                                 // Sauvegarder en WAV
-                                if let Err(e) = save_wav(&file_path, &buffer, 16000) {
+                                if let Err(e) = save_wav(&file_path, &buffer, sample_rate) {
                                     warn!("Failed to save utterance: {}", e);
                                 } else {
                                     info!("Saved utterance {} to {:?} ({}ms)", 
@@ -352,14 +361,15 @@ impl AudioSession {
                 let mut counter = self.utterance_counter.lock().unwrap();
                 *counter += 1;
                 let utterance_id = *counter;
-                let duration_ms = (buffer.len() as u32 * 1000) / 16000;
+                let sample_rate = *self.sample_rate.lock().unwrap();
+                let duration_ms = (buffer.len() as u32 * 1000) / sample_rate;
                 let file_path = self.config.output_dir.join(
                     format!("utterance_{:04}.wav", utterance_id)
                 );
-                if let Err(e) = save_wav(&file_path, &buffer, 16000) {
+                if let Err(e) = save_wav(&file_path, &buffer, sample_rate) {
                     warn!("Failed to save push-to-talk utterance: {}", e);
                 } else {
-                    info!("Saved PTT utterance {} to {:?} ({}ms)", utterance_id, file_path, duration_ms);
+                    info!("Saved PTT utterance {} to {:?} ({}ms, {}Hz)", utterance_id, file_path, duration_ms, sample_rate);
                     let utterance = Utterance { id: utterance_id, file_path, duration_ms, sample_count: buffer.len() };
                     self.utterances.lock().unwrap().push(utterance);
                 }
