@@ -12,13 +12,22 @@ This project uses **pnpm** for JavaScript dependencies. Do not use npm or yarn.
 
 ## Commands
 
-### Development
-- `pnpm dev` - Start Vite dev server (frontend only)
-- `pnpm tauri dev` - Run full Tauri app with hot reload (builds Rust backend + runs frontend)
+### Using Task (Recommended)
+This project uses [Task](https://taskfile.dev) for common operations. Run `task` to see all available tasks.
 
-### Building
+- `task dev` - Run full Tauri app with hot reload
+- `task build` - Build production DMG (sets MACOSX_DEPLOYMENT_TARGET=11.0 automatically)
+- `task build:clean` - Clean and rebuild
+- `task clean` - Clean all build artifacts
+- `task fmt` - Format Rust and frontend code
+- `task lint` - Lint Rust code with clippy
+- `task test` - Run Rust tests
+
+### Direct Commands (Alternative)
+- `pnpm dev` - Start Vite dev server (frontend only)
+- `pnpm tauri dev` - Run full Tauri app with hot reload
 - `pnpm build` - Build frontend (TypeScript type checking + Vite build)
-- `pnpm tauri build` - Build production Tauri application with bundled installers
+- `MACOSX_DEPLOYMENT_TARGET=11.0 pnpm tauri build --bundles dmg` - Build production DMG
 
 ### Type Checking
 - TypeScript type checking is integrated into the build process

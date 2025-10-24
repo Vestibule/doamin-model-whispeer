@@ -3,10 +3,71 @@
 version: '3'
 
 vars:
-  GREETING: Hello, World!
+  MACOSX_DEPLOYMENT_TARGET: '11.0'
 
 tasks:
   default:
+    desc: List all available tasks
     cmds:
-      - echo "{{.GREETING}}"
-    silent: true
+      - task --list
+
+  dev:
+    desc: Start Tauri development server with hot reload
+    cmds:
+      - pnpm tauri dev
+
+  dev:frontend:
+    desc: Start Vite dev server (frontend only)
+    cmds:
+      - pnpm dev
+
+  build:
+    desc: Build production Tauri application (DMG for macOS)
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '{{.MACOSX_DEPLOYMENT_TARGET}}'
+    cmds:
+      - pnpm build
+      - pnpm tauri build --bundles dmg
+
+  build:clean:
+    desc: Clean build cache and rebuild
+    cmds:
+      - task: clean
+      - task: build
+
+  clean:
+    desc: Clean all build artifacts
+    cmds:
+      - cd src-tauri && cargo clean
+      - rm -rf dist
+
+  clean:whisper:
+    desc: Clean only whisper-rs-sys cache (for build issues)
+    cmds:
+      - cd src-tauri && cargo clean -p whisper-rs-sys
+
+  fmt:
+    desc: Format Rust and frontend code
+    cmds:
+      - cd src-tauri && cargo fmt
+      - pnpm format
+
+  lint:
+    desc: Lint Rust code with clippy
+    cmds:
+      - cd src-tauri && cargo clippy
+
+  test:
+    desc: Run Rust tests
+    cmds:
+      - cd src-tauri && cargo test
+
+  check:
+    desc: Check Rust code compiles without building
+    cmds:
+      - cd src-tauri && cargo check
+
+  install:
+    desc: Install all dependencies
+    cmds:
+      - pnpm install
