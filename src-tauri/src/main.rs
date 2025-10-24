@@ -231,6 +231,9 @@ fn run_streaming_mode(args: &Args) -> anyhow::Result<()> {
         output_dir,
         vad_mode,
         device_name: None,
+        gain: 3.0,
+        enable_agc: true,
+        agc_target_level: 0.5,
     };
 
     let session = AudioSession::new(config)?;

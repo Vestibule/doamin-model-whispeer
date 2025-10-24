@@ -32,6 +32,12 @@ pub struct AudioSessionConfig {
     pub vad_mode: VadMode,
     /// Nom optionnel de l'interface audio à utiliser
     pub device_name: Option<String>,
+    /// Gain multiplier (1.0 = pas de gain, 2.0 = double le volume)
+    pub gain: f32,
+    /// Activer la normalisation automatique (AGC)
+    pub enable_agc: bool,
+    /// Niveau cible pour l'AGC (0.0 à 1.0)
+    pub agc_target_level: f32,
 }
 
 impl Clone for AudioSessionConfig {
@@ -47,6 +53,9 @@ impl Clone for AudioSessionConfig {
                 VadMode::VeryAggressive => VadMode::VeryAggressive,
             },
             device_name: self.device_name.clone(),
+            gain: self.gain,
+            enable_agc: self.enable_agc,
+            agc_target_level: self.agc_target_level,
         }
     }
 }
@@ -65,6 +74,9 @@ impl std::fmt::Debug for AudioSessionConfig {
             .field("output_dir", &self.output_dir)
             .field("vad_mode", &vad_mode_repr)
             .field("device_name", &self.device_name)
+            .field("gain", &self.gain)
+            .field("enable_agc", &self.enable_agc)
+            .field("agc_target_level", &self.agc_target_level)
             .finish()
     }
 }
@@ -77,6 +89,9 @@ impl Default for AudioSessionConfig {
             output_dir: std::env::temp_dir(),
             vad_mode: VadMode::Aggressive,
             device_name: None,
+            gain: 3.0, // Triple le volume par défaut
+            enable_agc: true, // AGC activé par défaut
+            agc_target_level: 0.5, // Normaliser à 50% du niveau max
         }
     }
 }
@@ -101,6 +116,9 @@ pub struct AudioSession {
     utterance_counter: Arc<Mutex<usize>>,
     is_speaking: Arc<Mutex<bool>>,
     stop_flag: Arc<AtomicBool>,
+    // AGC state
+    agc_current_gain: Arc<Mutex<f32>>,
+    agc_peak_level: Arc<Mutex<f32>>,
 }
 
 impl AudioSession {
@@ -130,6 +148,8 @@ impl AudioSession {
             utterance_counter: Arc::new(Mutex::new(0)),
             is_speaking: Arc::new(Mutex::new(false)),
             stop_flag: Arc::new(AtomicBool::new(false)),
+            agc_current_gain: Arc::new(Mutex::new(1.0)),
+            agc_peak_level: Arc::new(Mutex::new(0.0)),
         })
     }
 
@@ -165,6 +185,8 @@ impl AudioSession {
         let is_speaking = Arc::clone(&self.is_speaking);
         let utterances = Arc::clone(&self.utterances);
         let session_config = self.config.clone();
+        let agc_current_gain = Arc::clone(&self.agc_current_gain);
+        let agc_peak_level = Arc::clone(&self.agc_peak_level);
 
         // Buffer pour le VAD (480 samples = 30ms à 16kHz)
         let vad_frame_size = 480;
@@ -173,11 +195,46 @@ impl AudioSession {
         let stream = device.build_input_stream(
             &config.into(),
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                // Convertir f32 à i16
-                let samples: Vec<i16> = data
+                // Appliquer le gain et normalisation AGC
+                let mut samples: Vec<i16> = data
                     .iter()
-                    .map(|&sample| (sample * 32767.0) as i16)
+                    .map(|&sample| sample * session_config.gain)
+                    .collect::<Vec<f32>>()
+                    .iter()
+                    .map(|&sample| (sample * 32767.0).clamp(-32768.0, 32767.0) as i16)
                     .collect();
+                
+                // AGC: ajuster le gain automatiquement
+                if session_config.enable_agc {
+                    let max_sample = samples.iter()
+                        .map(|&s| s.abs())
+                        .max()
+                        .unwrap_or(0) as f32;
+                    
+                    let current_level = max_sample / 32768.0;
+                    
+                    // Mettre à jour le pic avec lissage
+                    let mut peak = agc_peak_level.lock().unwrap();
+                    *peak = (*peak * 0.95).max(current_level);
+                    
+                    // Calculer le gain nécessaire
+                    if *peak > 0.01 { // Éviter division par zéro
+                        let target_gain = session_config.agc_target_level / *peak;
+                        let mut current_gain = agc_current_gain.lock().unwrap();
+                        
+                        // Lissage du gain (atténuation rapide, amplification lente)
+                        if target_gain < *current_gain {
+                            *current_gain = (*current_gain * 0.8 + target_gain * 0.2).clamp(0.1, 10.0);
+                        } else {
+                            *current_gain = (*current_gain * 0.99 + target_gain * 0.01).clamp(0.1, 10.0);
+                        }
+                        
+                        // Appliquer le gain AGC
+                        samples = samples.iter()
+                            .map(|&s| ((s as f32) * *current_gain).clamp(-32768.0, 32767.0) as i16)
+                            .collect();
+                    }
+                }
 
                 let mut vad_buf = vad_buffer.lock().unwrap();
                 vad_buf.extend_from_slice(&samples);
