@@ -89,9 +89,9 @@ impl Default for AudioSessionConfig {
             output_dir: std::env::temp_dir(),
             vad_mode: VadMode::Aggressive,
             device_name: None,
-            gain: 3.0, // Triple le volume par défaut
+            gain: 2.0, // Double le volume par défaut (réduit de 3.0 pour éviter distorsion)
             enable_agc: true, // AGC activé par défaut
-            agc_target_level: 0.5, // Normaliser à 50% du niveau max
+            agc_target_level: 0.3, // Normaliser à 30% du niveau max (réduit de 0.5 pour éviter clipping)
         }
     }
 }
@@ -227,6 +227,16 @@ impl AudioSession {
                             *current_gain = (*current_gain * 0.8 + target_gain * 0.2).clamp(0.1, 10.0);
                         } else {
                             *current_gain = (*current_gain * 0.99 + target_gain * 0.01).clamp(0.1, 10.0);
+                        }
+                        
+                        // Log occasionnel des niveaux audio
+                        static mut LOG_COUNTER: u32 = 0;
+                        unsafe {
+                            LOG_COUNTER += 1;
+                            if LOG_COUNTER % 100 == 0 { // Log toutes les 100 frames (~3 secondes)
+                                debug!("AGC: peak={:.3}, current_gain={:.3}, target_gain={:.3}", 
+                                      *peak, *current_gain, target_gain);
+                            }
                         }
                         
                         // Appliquer le gain AGC

@@ -39,7 +39,10 @@ impl RecordingManager {
             anyhow::bail!("Recording already in progress");
         }
 
-        let output_dir = std::env::temp_dir().join("domain-model-audio");
+        // Use home directory for easier access to audio files during debugging
+        let output_dir = std::env::var("HOME")
+            .map(|h| std::path::PathBuf::from(h).join("domain-model-audio"))
+            .unwrap_or_else(|_| std::env::temp_dir().join("domain-model-audio"));
         let device_name = self.selected_device.lock().unwrap().clone();
         
         let config = AudioSessionConfig {
