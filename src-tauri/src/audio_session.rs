@@ -38,6 +38,8 @@ pub struct AudioSessionConfig {
     pub enable_agc: bool,
     /// Niveau cible pour l'AGC (0.0 à 1.0)
     pub agc_target_level: f32,
+    /// Mode push-to-talk: enregistre tout le flux entre start/stop sans découpage VAD
+    pub push_to_talk: bool,
 }
 
 impl Clone for AudioSessionConfig {
@@ -56,6 +58,7 @@ impl Clone for AudioSessionConfig {
             gain: self.gain,
             enable_agc: self.enable_agc,
             agc_target_level: self.agc_target_level,
+            push_to_talk: self.push_to_talk,
         }
     }
 }
@@ -77,6 +80,7 @@ impl std::fmt::Debug for AudioSessionConfig {
             .field("gain", &self.gain)
             .field("enable_agc", &self.enable_agc)
             .field("agc_target_level", &self.agc_target_level)
+            .field("push_to_talk", &self.push_to_talk)
             .finish()
     }
 }
@@ -92,6 +96,7 @@ impl Default for AudioSessionConfig {
             gain: 2.0, // Double le volume par défaut (réduit de 3.0 pour éviter distorsion)
             enable_agc: true, // AGC activé par défaut
             agc_target_level: 0.3, // Normaliser à 30% du niveau max (réduit de 0.5 pour éviter clipping)
+            push_to_talk: true, // Par défaut: vrai push-to-talk pour l'app Tauri
         }
     }
 }
@@ -191,6 +196,7 @@ impl AudioSession {
         // Buffer pour le VAD (480 samples = 30ms à 16kHz)
         let vad_frame_size = 480;
         let vad_buffer = Arc::new(Mutex::new(Vec::new()));
+        let ptt_mode = session_config.push_to_talk;
 
         let stream = device.build_input_stream(
             &config.into(),
@@ -244,6 +250,13 @@ impl AudioSession {
                             .map(|&s| ((s as f32) * *current_gain).clamp(-32768.0, 32767.0) as i16)
                             .collect();
                     }
+                }
+
+                if ptt_mode {
+                    // En mode push-to-talk: on stocke directement tout le flux
+                    let mut buffer = current_buffer.lock().unwrap();
+                    buffer.extend_from_slice(&samples);
+                    return;
                 }
 
                 let mut vad_buf = vad_buffer.lock().unwrap();
@@ -331,6 +344,28 @@ impl AudioSession {
 
         info!("Stop signal received, ending recording");
         drop(stream);
+
+        // En mode push-to-talk: à l'arrêt, sauvegarder l'unique segment
+        if session_config.push_to_talk {
+            let mut buffer = self.current_buffer.lock().unwrap();
+            if !buffer.is_empty() {
+                let mut counter = self.utterance_counter.lock().unwrap();
+                *counter += 1;
+                let utterance_id = *counter;
+                let duration_ms = (buffer.len() as u32 * 1000) / 16000;
+                let file_path = self.config.output_dir.join(
+                    format!("utterance_{:04}.wav", utterance_id)
+                );
+                if let Err(e) = save_wav(&file_path, &buffer, 16000) {
+                    warn!("Failed to save push-to-talk utterance: {}", e);
+                } else {
+                    info!("Saved PTT utterance {} to {:?} ({}ms)", utterance_id, file_path, duration_ms);
+                    let utterance = Utterance { id: utterance_id, file_path, duration_ms, sample_count: buffer.len() };
+                    self.utterances.lock().unwrap().push(utterance);
+                }
+                buffer.clear();
+            }
+        }
 
         Ok(())
     }

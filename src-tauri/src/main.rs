@@ -234,6 +234,7 @@ fn run_streaming_mode(args: &Args) -> anyhow::Result<()> {
         gain: 2.0,
         enable_agc: true,
         agc_target_level: 0.3,
+        push_to_talk: false, // CLI mode uses VAD-based segmentation
     };
 
     let session = AudioSession::new(config)?;

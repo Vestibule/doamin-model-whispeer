@@ -9,10 +9,17 @@
 
 - [x] **Implement Audio Level Normalization (AGC)** (2025-01-24)
   - Added Automatic Gain Control (AGC) to normalize audio input levels
-  - Configured default gain multiplier of 3.0x for better microphone sensitivity
+  - Configured default gain multiplier of 2.0x for better microphone sensitivity
   - Implemented adaptive gain adjustment with peak tracking and smoothing
-  - Target level set to 50% of maximum for optimal transcription quality
+  - Target level set to 30% of maximum to avoid clipping and distortion
   - AGC enabled by default to handle low microphone input levels
+
+- [x] **Implement True Push-to-Talk Mode** (2025-01-24)
+  - Added push_to_talk configuration flag to AudioSessionConfig
+  - In PTT mode: records entire audio stream from start to stop without VAD segmentation
+  - Saves single utterance file when recording stops (spacebar release)
+  - Tauri app uses PTT mode by default for better control and quality
+  - CLI mode still uses VAD-based automatic segmentation
 
 ## In Progress
 
