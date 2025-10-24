@@ -63,7 +63,7 @@ impl SpeechToText {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
-        params.set_language(Some("en"));
+        params.set_language(Some("fr")); // Français
         params.set_translate(false);
         
         // Create a new state for this transcription
@@ -101,7 +101,7 @@ impl SpeechToText {
         
         Ok(TranscriptionResult {
             text: full_text.trim().to_string(),
-            language: Some("en".to_string()),
+            language: Some("fr".to_string()),
             duration_ms,
         })
     }
@@ -115,16 +115,23 @@ impl SpeechToText {
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).context("Failed to read audio file")?;
         
-        // Parse WAV header (simplified - assumes 16-bit PCM mono 16kHz)
+        // Parse WAV header
         if buffer.len() < 44 {
             anyhow::bail!("Invalid WAV file: too short");
         }
+        
+        // Lire le sample rate depuis le header WAV (offset 24, 4 bytes, little-endian)
+        let sample_rate = u32::from_le_bytes([
+            buffer[24], buffer[25], buffer[26], buffer[27]
+        ]);
+        
+        log::info!("WAV file sample rate: {} Hz", sample_rate);
         
         // Skip WAV header (44 bytes)
         let audio_data = &buffer[44..];
         
         // Convert i16 samples to f32 normalized to [-1.0, 1.0]
-        let samples: Vec<f32> = audio_data
+        let mut samples: Vec<f32> = audio_data
             .chunks_exact(2)
             .map(|chunk| {
                 let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
@@ -132,8 +139,42 @@ impl SpeechToText {
             })
             .collect();
         
+        // Whisper attend du 16kHz, downsampler si nécessaire
+        if sample_rate != 16000 {
+            log::info!("Resampling from {} Hz to 16000 Hz", sample_rate);
+            samples = resample_audio(&samples, sample_rate, 16000);
+            log::info!("Resampled to {} samples", samples.len());
+        }
+        
         Ok(samples)
     }
+}
+
+/// Resample audio from one sample rate to another using linear interpolation
+fn resample_audio(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+    if from_rate == to_rate {
+        return samples.to_vec();
+    }
+    
+    let ratio = from_rate as f64 / to_rate as f64;
+    let output_len = (samples.len() as f64 / ratio).ceil() as usize;
+    let mut output = Vec::with_capacity(output_len);
+    
+    for i in 0..output_len {
+        let src_pos = i as f64 * ratio;
+        let src_index = src_pos as usize;
+        
+        if src_index >= samples.len() - 1 {
+            output.push(samples[samples.len() - 1]);
+        } else {
+            // Linear interpolation
+            let frac = src_pos - src_index as f64;
+            let sample = samples[src_index] * (1.0 - frac as f32) + samples[src_index + 1] * frac as f32;
+            output.push(sample);
+        }
+    }
+    
+    output
 }
 
 #[cfg(test)]

@@ -62,10 +62,12 @@ impl AudioEnhancer {
         
         let filter_chain = filters.join(",");
         
-        // Exécuter ffmpeg
+        // Exécuter ffmpeg avec conversion à 16kHz pour Whisper
         let output = Command::new("ffmpeg")
             .arg("-i").arg(input_path)
             .arg("-af").arg(&filter_chain)
+            .arg("-ar").arg("16000") // Resample à 16kHz pour Whisper
+            .arg("-ac").arg("1") // Mono
             .arg("-y") // Overwrite output file
             .arg(output_path)
             .output()
