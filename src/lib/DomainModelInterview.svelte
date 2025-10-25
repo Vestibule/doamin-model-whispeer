@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Textarea, Badge, Heading, Spinner, Input, Select } from 'flowbite-svelte';
-  import { ChevronRightOutline, ChevronLeftOutline, CheckCircleSolid, SaveOutline, FolderOpenOutline } from 'flowbite-svelte-icons';
+  import { ChevronRightOutline, ChevronLeftOutline, CheckCircleSolid, FloppyDiskOutline, FolderOpenOutline } from 'flowbite-svelte-icons';
   import { INTERVIEW_SECTIONS, type InterviewState, type UserAnswer } from './types/interview';
   import AudioInput from './AudioInput.svelte';
   import CanvasViewer from './CanvasViewer.svelte';
@@ -337,7 +337,7 @@
             {#if saving}
               <Spinner size="4" class="mr-2" />
             {:else}
-              <SaveOutline class="w-4 h-4 mr-2" />
+              <FloppyDiskOutline class="w-4 h-4 mr-2" />
             {/if}
             Sauvegarder
           </Button>
@@ -383,17 +383,17 @@
   </Card>
 
   <!-- Main interview content -->
-  <div class="flex-1 flex gap-4 overflow-hidden">
+  <div class="flex-1 flex gap-4 min-h-0">
   {#if fullCanvasMarkdown}
     <!-- Full canvas view after completion -->
-    <div class="flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-      <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+    <div class="flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col">
+      <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-none">
         <Heading tag="h2">Canvas Domain Model Complet</Heading>
         <Button color="light" size="sm" onclick={() => { fullCanvasMarkdown = ""; interviewState.isComplete = false; }}>
           Retour à l'interview
         </Button>
       </div>
-      <div class="h-full overflow-y-auto p-6">
+      <div class="flex-1 overflow-y-auto p-6">
         <div class="prose dark:prose-invert max-w-none">
           {@html fullCanvasMarkdown.split('\n').map(line => {
             if (line.startsWith('#')) return `<h2>${line.replace(/^#+\s*/, '')}</h2>`;
@@ -407,8 +407,8 @@
   {:else}
     <!-- Interview view -->
     <!-- Left sidebar: Progress and sections -->
-    <div class="w-64 flex-none space-y-4">
-    <Card>
+    <div class="w-64 flex-none flex flex-col gap-4 overflow-y-auto">
+    <Card class="flex-none">
       <Heading tag="h3" class="mb-4">Progression</Heading>
       <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
         <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: {progress}%"></div>
@@ -418,7 +418,7 @@
       </p>
     </Card>
 
-    <Card>
+    <Card class="flex-none">
       <Heading tag="h4" class="mb-3">Sections</Heading>
       <div class="space-y-2">
         {#each sections as section, idx}
@@ -442,22 +442,22 @@
   </div>
 
   <!-- Main content: Question and answer -->
-  <div class="flex-1 flex flex-col gap-4">
+  <div class="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
     {#if !interviewState.isComplete}
-      <Card class="flex-1 flex flex-col">
+      <Card class="flex-none">
         <div class="mb-4">
           <Badge color="indigo" large>Question {interviewState.currentQuestionIndex + 1} / {currentSection.questions.length}</Badge>
           <Heading tag="h2" class="mt-2">{currentSection.title}</Heading>
         </div>
 
-        <div class="flex-1 flex flex-col gap-4">
+        <div class="space-y-4">
           <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
             <p class="text-lg text-gray-900 dark:text-gray-100 leading-relaxed">
               {currentQuestion}
             </p>
           </div>
 
-          <div class="flex-1">
+          <div>
             <label for="answer" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Votre réponse
             </label>
@@ -490,7 +490,7 @@
         </div>
       </Card>
     {:else}
-      <Card class="flex-1">
+      <Card class="flex-none">
         <div class="text-center py-12">
           <CheckCircleSolid class="w-16 h-16 text-green-500 mx-auto mb-4" />
           <Heading tag="h2" class="mb-2">Interview complétée !</Heading>
@@ -522,7 +522,7 @@
     {/if}
 
     {#if processing}
-      <Card>
+      <Card class="flex-none">
         <div class="flex items-center gap-3 text-blue-600 dark:text-blue-400">
           <Spinner size="6" />
           <div>
@@ -534,7 +534,7 @@
     {/if}
 
     {#if error}
-      <Card>
+      <Card class="flex-none">
         <div class="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
           <p class="font-semibold">Erreur</p>
           <p class="text-sm mt-1">{error}</p>
@@ -544,7 +544,7 @@
 
     <!-- Answers summary -->
     {#if interviewState.answers.length > 0}
-      <Card>
+      <Card class="flex-none">
         <Heading tag="h4" class="mb-3">Réponses récentes</Heading>
         <div class="space-y-2 max-h-48 overflow-y-auto">
           {#each interviewState.answers.slice(-3).reverse() as answer}
@@ -564,8 +564,8 @@
 
   <!-- Right panel: Real-time canvas preview -->
   {#if processedSections.length > 0 && !interviewState.isComplete}
-    <div class="w-96 flex-none">
-      <Card class="h-full flex flex-col">
+    <div class="w-96 flex-none flex flex-col min-h-0">
+      <Card class="flex-1 flex flex-col min-h-0">
         <Heading tag="h3" class="mb-4">Aperçu du Canvas</Heading>
         <div class="flex-1 overflow-y-auto space-y-4 text-sm">
           {#each processedSections as section}
@@ -588,4 +588,5 @@
     </div>
   {/if}
   {/if}
+  </div>
 </div>
