@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Button, Card, Textarea, Badge, Heading, Spinner } from 'flowbite-svelte';
-  import { ChevronRightOutline, ChevronLeftOutline, CheckCircleSolid } from 'flowbite-svelte-icons';
+  import { Button, Card, Textarea, Badge, Heading, Spinner, Input } from 'flowbite-svelte';
+  import { ChevronRightOutline, ChevronLeftOutline, CheckCircleSolid, SaveOutline } from 'flowbite-svelte-icons';
   import { INTERVIEW_SECTIONS, type InterviewState, type UserAnswer } from './types/interview';
   import AudioInput from './AudioInput.svelte';
   import CanvasViewer from './CanvasViewer.svelte';
-  import { processInterviewSection, generateFullCanvas, type InterviewSection as TauriInterviewSection, type SectionCanvasResult } from './tauri';
+  import { processInterviewSection, generateFullCanvas, saveInterviewState, type InterviewSection as TauriInterviewSection, type SectionCanvasResult } from './tauri';
 
+  let projectName = $state("");
   let interviewState = $state<InterviewState>({
     currentSection: 0,
     currentQuestionIndex: 0,
@@ -20,6 +21,8 @@
   let fullCanvasMarkdown = $state("");
   let processing = $state(false);
   let generatingCanvas = $state(false);
+  let saving = $state(false);
+  let saveStatus = $state("");
   let error = $state("");
 
   // Computed values
@@ -39,6 +42,33 @@
   function handleAnswerSubmit(text: string) {
     currentAnswer = text;
     saveAndNext();
+  }
+
+  async function saveState() {
+    if (!projectName.trim()) return;
+    
+    saving = true;
+    saveStatus = "";
+    
+    try {
+      const stateToSave = {
+        projectName,
+        answers: interviewState.answers,
+        sections: sections.map(s => ({ id: s.id, title: s.title, completed: s.completed })),
+        currentSection: interviewState.currentSection,
+        currentQuestionIndex: interviewState.currentQuestionIndex
+      };
+      
+      const message = await saveInterviewState(projectName, JSON.stringify(stateToSave));
+      saveStatus = message;
+      
+      // Clear status after 3 seconds
+      setTimeout(() => { saveStatus = ""; }, 3000);
+    } catch (e) {
+      error = `Erreur lors de la sauvegarde: ${String(e)}`;
+    } finally {
+      saving = false;
+    }
   }
 
   async function saveAndNext() {
@@ -92,6 +122,9 @@
            a.questionIndex === interviewState.currentQuestionIndex
     );
     currentAnswer = nextAnswer ? nextAnswer.answer : "";
+
+    // Auto-save state
+    await saveState();
   }
 
   async function processSectionWithLLM() {
@@ -178,6 +211,9 @@
            a.questionIndex === interviewState.currentQuestionIndex
     );
     currentAnswer = previousAnswer ? previousAnswer.answer : "";
+
+    // Auto-save state
+    await saveState();
   }
 
   function jumpToSection(sectionIndex: number) {
@@ -212,10 +248,52 @@
            a.questionIndex === 0
     );
     currentAnswer = targetAnswer ? targetAnswer.answer : "";
+
+    // Auto-save state
+    saveState();
   }
 </script>
 
-<div class="h-full w-full flex gap-4 p-6 bg-gray-50 dark:bg-gray-900">
+<div class="h-full w-full flex flex-col gap-4 p-6 bg-gray-50 dark:bg-gray-900">
+  <!-- Project name header -->
+  <Card class="flex-none">
+    <div class="flex items-center gap-4">
+      <div class="flex-1">
+        <label for="projectName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Nom du projet
+        </label>
+        <Input
+          id="projectName"
+          bind:value={projectName}
+          placeholder="Ex: Système de gestion des commandes"
+          class="text-lg"
+        />
+      </div>
+      <div class="flex items-center gap-2 pt-6">
+        <Button
+          color="light"
+          size="sm"
+          disabled={!projectName.trim() || saving}
+          onclick={saveState}
+        >
+          {#if saving}
+            <Spinner size="4" class="mr-2" />
+          {:else}
+            <SaveOutline class="w-4 h-4 mr-2" />
+          {/if}
+          Sauvegarder
+        </Button>
+        {#if saveStatus}
+          <span class="text-sm text-green-600 dark:text-green-400">
+            ✓ Sauvegardé
+          </span>
+        {/if}
+      </div>
+    </div>
+  </Card>
+
+  <!-- Main interview content -->
+  <div class="flex-1 flex gap-4 overflow-hidden">
   {#if fullCanvasMarkdown}
     <!-- Full canvas view after completion -->
     <div class="flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
@@ -419,5 +497,6 @@
       </Card>
     </div>
   {/if}
+  </div>
   {/if}
 </div>

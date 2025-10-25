@@ -191,3 +191,16 @@ export async function generateFullCanvas(
 ): Promise<FullCanvasResult> {
   return invoke<FullCanvasResult>("generate_full_canvas", { sections });
 }
+
+/**
+ * Save interview state to a markdown file named after the project
+ * @param projectName - Name of the project
+ * @param stateJson - JSON string of the interview state
+ * @returns Success message with file path
+ */
+export async function saveInterviewState(
+  projectName: string,
+  stateJson: string
+): Promise<string> {
+  return invoke<string>("save_interview_state", { projectName, stateJson });
+}

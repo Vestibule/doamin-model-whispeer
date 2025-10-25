@@ -189,6 +189,76 @@ async fn set_audio_device(
 }
 
 #[tauri::command]
+async fn save_interview_state(
+    project_name: String,
+    state_json: String,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    use std::fs;
+
+    log::info!("[Interview] Saving interview state for project: {}", project_name);
+
+    // Get app data directory
+    let app_data_dir = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+
+    // Create filename from project name (sanitized)
+    let sanitized_name = project_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    
+    let file_path = app_data_dir.join(format!("{}.md", sanitized_name));
+
+    // Parse the JSON state to create a nice markdown format
+    let state: serde_json::Value = serde_json::from_str(&state_json)
+        .map_err(|e| format!("Failed to parse state JSON: {}", e))?;
+
+    let mut markdown = format!("# Interview: {}\n\n", project_name);
+    markdown.push_str(&format!("*Dernière mise à jour: {}*\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+    markdown.push_str("---\n\n");
+
+    // Add answers grouped by section
+    if let Some(answers) = state["answers"].as_array() {
+        let mut current_section_id: i64 = -1;
+
+        for answer in answers {
+            let section_id = answer["sectionId"].as_i64().unwrap_or(-1);
+            let question = answer["question"].as_str().unwrap_or("");
+            let answer_text = answer["answer"].as_str().unwrap_or("");
+
+            // Get section title from the sections array
+            if section_id != current_section_id {
+                current_section_id = section_id;
+                // Find section title
+                if let Some(sections) = state["sections"].as_array() {
+                    if let Some(section) = sections.iter().find(|s| s["id"].as_i64() == Some(section_id)) {
+                        let section_title = section["title"].as_str().unwrap_or("");
+                        markdown.push_str(&format!("## {}\n\n", section_title));
+                    }
+                }
+            }
+
+            markdown.push_str(&format!("**Q:** {}\n\n", question));
+            markdown.push_str(&format!("**R:** {}\n\n", answer_text));
+            markdown.push_str("---\n\n");
+        }
+    }
+
+    // Write to file
+    fs::write(&file_path, markdown)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    log::info!("[Interview] State saved to: {:?}", file_path);
+    Ok(format!("État sauvegardé dans {}", file_path.display()))
+}
+
+#[tauri::command]
 async fn process_interview_section(
     section: interview::InterviewSection,
 ) -> Result<interview::SectionCanvasResult, String> {
@@ -485,6 +555,7 @@ pub fn run() {
             transcribe_audio,
             list_audio_devices,
             set_audio_device,
+            save_interview_state,
             process_interview_section,
             generate_full_canvas
         ])
