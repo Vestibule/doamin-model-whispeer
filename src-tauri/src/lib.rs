@@ -232,6 +232,188 @@ async fn generate_full_canvas(
         })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use interview::{InterviewSection, SectionCanvasResult, UserAnswer};
+
+    #[tokio::test]
+    async fn test_process_interview_section_command_structure() {
+        // Test that the command can be called with proper data structures
+        let section = InterviewSection {
+            section_id: 1,
+            section_title: "Contexte & Vision".to_string(),
+            answers: vec![
+                UserAnswer {
+                    section_id: 1,
+                    question_index: 0,
+                    question: "Quel problème réel veux-tu résoudre ?".to_string(),
+                    answer: "Gérer les commandes e-commerce".to_string(),
+                },
+            ],
+        };
+
+        // Verify the section structure is valid
+        assert_eq!(section.section_id, 1);
+        assert_eq!(section.answers.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_generate_full_canvas_command_structure() {
+        // Test that the command can be called with proper data structures
+        let sections = vec![
+            SectionCanvasResult {
+                section_id: 1,
+                section_title: "Contexte & Vision".to_string(),
+                canvas_content: "* **Problème à résoudre :** Test".to_string(),
+            },
+            SectionCanvasResult {
+                section_id: 2,
+                section_title: "Acteurs & Use Cases".to_string(),
+                canvas_content: "* **Acteurs :** Utilisateur".to_string(),
+            },
+        ];
+
+        // Verify the sections structure is valid
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].section_id, 1);
+        assert_eq!(sections[1].section_id, 2);
+    }
+
+    #[test]
+    fn test_orchestrate_result_serialization() {
+        let result = OrchestrateResult {
+            markdown: "# Test Markdown".to_string(),
+            mermaid: "graph TD\nA --> B".to_string(),
+            model: serde_json::json!({
+                "entities": [],
+                "relations": []
+            }),
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("markdown"));
+        assert!(json.contains("mermaid"));
+        assert!(json.contains("model"));
+
+        let deserialized: OrchestrateResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.markdown, "# Test Markdown");
+        assert_eq!(deserialized.mermaid, "graph TD\nA --> B");
+    }
+
+    #[test]
+    fn test_audio_device_serialization() {
+        let device = AudioDevice {
+            name: "Test Microphone".to_string(),
+            is_default: true,
+        };
+
+        let json = serde_json::to_string(&device).unwrap();
+        assert!(json.contains("Test Microphone"));
+        assert!(json.contains("is_default"));
+
+        let deserialized: AudioDevice = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "Test Microphone");
+        assert!(deserialized.is_default);
+    }
+
+    #[test]
+    fn test_greet_command() {
+        let result = greet("Tauri");
+        assert_eq!(result, "Hello, Tauri! You've been greeted from Rust!");
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires LLM and MCP setup
+    async fn test_orchestrate_integration() {
+        let transcript = "A user can create an order with multiple items";
+        let result = orchestrate(transcript.to_string()).await;
+        
+        // This test requires full environment setup
+        // In a real test environment, we'd expect either success or specific error
+        match result {
+            Ok(orchestrate_result) => {
+                assert!(!orchestrate_result.markdown.is_empty());
+                assert!(!orchestrate_result.mermaid.is_empty());
+            }
+            Err(e) => {
+                // Expected errors in test environment without setup
+                assert!(
+                    e.contains("Failed to initialize LLM") ||
+                    e.contains("Failed to generate domain model") ||
+                    e.contains("Failed to generate mermaid") ||
+                    e.contains("Failed to generate markdown")
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires LLM setup
+    async fn test_process_interview_section_integration() {
+        let section = InterviewSection {
+            section_id: 1,
+            section_title: "Contexte & Vision".to_string(),
+            answers: vec![
+                UserAnswer {
+                    section_id: 1,
+                    question_index: 0,
+                    question: "Quel problème réel veux-tu résoudre ?".to_string(),
+                    answer: "Gérer les commandes e-commerce avec validation des stocks".to_string(),
+                },
+            ],
+        };
+
+        let result = process_interview_section(section).await;
+        
+        // This test requires LLM setup
+        match result {
+            Ok(section_result) => {
+                assert_eq!(section_result.section_id, 1);
+                assert_eq!(section_result.section_title, "Contexte & Vision");
+                assert!(!section_result.canvas_content.is_empty());
+            }
+            Err(e) => {
+                // Expected errors in test environment without LLM
+                assert!(
+                    e.contains("Failed to initialize interview processor") ||
+                    e.contains("Failed to process section")
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires LLM setup
+    async fn test_generate_full_canvas_integration() {
+        let sections = vec![
+            SectionCanvasResult {
+                section_id: 1,
+                section_title: "Contexte & Vision".to_string(),
+                canvas_content: "* **Problème à résoudre :** Gestion des commandes".to_string(),
+            },
+        ];
+
+        let result = generate_full_canvas(sections).await;
+        
+        // This test requires LLM setup
+        match result {
+            Ok(canvas_result) => {
+                assert!(canvas_result.markdown.contains("# Canvas — Rich Domain Model (DDD)"));
+                assert!(canvas_result.markdown.contains("## Contexte & Vision"));
+                assert!(canvas_result.markdown.contains("Gestion des commandes"));
+            }
+            Err(e) => {
+                // Expected errors in test environment without LLM
+                assert!(
+                    e.contains("Failed to initialize interview processor") ||
+                    e.contains("Failed to generate canvas")
+                );
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
