@@ -16,6 +16,10 @@ dist-ssr
 # Model files (Whisper, etc.)
 models/
 
+# Rust build artifacts for sub-projects
+mcp/mcp-server/target/
+rec-audio/target/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
