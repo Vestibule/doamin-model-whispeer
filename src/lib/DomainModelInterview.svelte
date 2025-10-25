@@ -587,6 +587,5 @@
       </Card>
     </div>
   {/if}
-  </div>
   {/if}
 </div>
