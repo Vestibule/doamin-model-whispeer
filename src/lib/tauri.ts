@@ -204,3 +204,22 @@ export async function saveInterviewState(
 ): Promise<string> {
   return invoke<string>("save_interview_state", { projectName, stateJson });
 }
+
+/**
+ * Load interview state from a JSON file
+ * @param projectName - Name of the project
+ * @returns JSON string of the saved state
+ */
+export async function loadInterviewState(
+  projectName: string
+): Promise<string> {
+  return invoke<string>("load_interview_state", { projectName });
+}
+
+/**
+ * List all saved project names
+ * @returns Array of project names
+ */
+export async function listSavedProjects(): Promise<string[]> {
+  return invoke<string[]>("list_saved_projects");
+}

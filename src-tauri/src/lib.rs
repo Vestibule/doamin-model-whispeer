@@ -250,12 +250,90 @@ async fn save_interview_state(
         }
     }
 
-    // Write to file
+    // Write markdown file
     fs::write(&file_path, markdown)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+        .map_err(|e| format!("Failed to write markdown file: {}", e))?;
 
-    log::info!("[Interview] State saved to: {:?}", file_path);
+    // Also save raw JSON for loading
+    let json_path = app_data_dir.join(format!("{}.json", sanitized_name));
+    fs::write(&json_path, &state_json)
+        .map_err(|e| format!("Failed to write JSON file: {}", e))?;
+
+    log::info!("[Interview] State saved to: {:?} (markdown) and {:?} (json)", file_path, json_path);
     Ok(format!("État sauvegardé dans {}", file_path.display()))
+}
+
+#[tauri::command]
+async fn load_interview_state(
+    project_name: String,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    use std::fs;
+
+    log::info!("[Interview] Loading interview state for project: {}", project_name);
+
+    // Get app data directory
+    let app_data_dir = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Create filename from project name (sanitized)
+    let sanitized_name = project_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    
+    let file_path = app_data_dir.join(format!("{}.json", sanitized_name));
+
+    // Check if file exists
+    if !file_path.exists() {
+        return Err(format!("Aucune sauvegarde trouvée pour le projet '{}'", project_name));
+    }
+
+    // Read the JSON file
+    let json_content = fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    log::info!("[Interview] State loaded from: {:?}", file_path);
+    Ok(json_content)
+}
+
+#[tauri::command]
+async fn list_saved_projects(
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    use std::fs;
+
+    log::info!("[Interview] Listing saved projects");
+
+    // Get app data directory
+    let app_data_dir = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Create directory if it doesn't exist
+    if !app_data_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    // Read directory and collect .json files
+    let entries = fs::read_dir(&app_data_dir)
+        .map_err(|e| format!("Failed to read directory: {}", e))?;
+
+    let projects: Vec<String> = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension()?.to_str()? == "json" {
+                path.file_stem()?.to_str().map(String::from)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    log::info!("[Interview] Found {} saved projects", projects.len());
+    Ok(projects)
 }
 
 #[tauri::command]
@@ -556,6 +634,8 @@ pub fn run() {
             list_audio_devices,
             set_audio_device,
             save_interview_state,
+            load_interview_state,
+            list_saved_projects,
             process_interview_section,
             generate_full_canvas
         ])

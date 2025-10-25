@@ -1,12 +1,16 @@
 <script lang="ts">
-  import { Button, Card, Textarea, Badge, Heading, Spinner, Input } from 'flowbite-svelte';
-  import { ChevronRightOutline, ChevronLeftOutline, CheckCircleSolid, SaveOutline } from 'flowbite-svelte-icons';
+  import { Button, Card, Textarea, Badge, Heading, Spinner, Input, Select } from 'flowbite-svelte';
+  import { ChevronRightOutline, ChevronLeftOutline, CheckCircleSolid, SaveOutline, FolderOpenOutline } from 'flowbite-svelte-icons';
   import { INTERVIEW_SECTIONS, type InterviewState, type UserAnswer } from './types/interview';
   import AudioInput from './AudioInput.svelte';
   import CanvasViewer from './CanvasViewer.svelte';
-  import { processInterviewSection, generateFullCanvas, saveInterviewState, type InterviewSection as TauriInterviewSection, type SectionCanvasResult } from './tauri';
+  import { processInterviewSection, generateFullCanvas, saveInterviewState, loadInterviewState, listSavedProjects, type InterviewSection as TauriInterviewSection, type SectionCanvasResult } from './tauri';
+  import { onMount } from 'svelte';
 
   let projectName = $state("");
+  let savedProjects = $state<string[]>([]);
+  let selectedProject = $state("");
+  let loading = $state(false);
   let interviewState = $state<InterviewState>({
     currentSection: 0,
     currentQuestionIndex: 0,
@@ -44,6 +48,14 @@
     saveAndNext();
   }
 
+  onMount(async () => {
+    try {
+      savedProjects = await listSavedProjects();
+    } catch (e) {
+      console.error("Failed to load saved projects:", e);
+    }
+  });
+
   async function saveState() {
     if (!projectName.trim()) return;
     
@@ -62,12 +74,57 @@
       const message = await saveInterviewState(projectName, JSON.stringify(stateToSave));
       saveStatus = message;
       
+      // Refresh saved projects list
+      savedProjects = await listSavedProjects();
+      
       // Clear status after 3 seconds
       setTimeout(() => { saveStatus = ""; }, 3000);
     } catch (e) {
       error = `Erreur lors de la sauvegarde: ${String(e)}`;
     } finally {
       saving = false;
+    }
+  }
+
+  async function loadState() {
+    if (!selectedProject) return;
+    
+    loading = true;
+    error = "";
+    
+    try {
+      const stateJson = await loadInterviewState(selectedProject);
+      const loadedState = JSON.parse(stateJson);
+      
+      // Restore state
+      projectName = loadedState.projectName || selectedProject;
+      interviewState.answers = loadedState.answers || [];
+      interviewState.currentSection = loadedState.currentSection || 0;
+      interviewState.currentQuestionIndex = loadedState.currentQuestionIndex || 0;
+      
+      // Restore section completion status
+      if (loadedState.sections) {
+        loadedState.sections.forEach((savedSection: any) => {
+          const section = sections.find(s => s.id === savedSection.id);
+          if (section) {
+            section.completed = savedSection.completed;
+          }
+        });
+      }
+      
+      // Load current answer
+      const currentAnswerData = interviewState.answers.find(
+        a => a.sectionId === currentSection.id && 
+             a.questionIndex === interviewState.currentQuestionIndex
+      );
+      currentAnswer = currentAnswerData ? currentAnswerData.answer : "";
+      
+      saveStatus = `✓ Projet "${projectName}" chargé`;
+      setTimeout(() => { saveStatus = ""; }, 3000);
+    } catch (e) {
+      error = `Erreur lors du chargement: ${String(e)}`;
+    } finally {
+      loading = false;
     }
   }
 
@@ -257,38 +314,71 @@
 <div class="h-full w-full flex flex-col gap-4 p-6 bg-gray-50 dark:bg-gray-900">
   <!-- Project name header -->
   <Card class="flex-none">
-    <div class="flex items-center gap-4">
-      <div class="flex-1">
-        <label for="projectName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Nom du projet
-        </label>
-        <Input
-          id="projectName"
-          bind:value={projectName}
-          placeholder="Ex: Système de gestion des commandes"
-          class="text-lg"
-        />
-      </div>
-      <div class="flex items-center gap-2 pt-6">
-        <Button
-          color="light"
-          size="sm"
-          disabled={!projectName.trim() || saving}
-          onclick={saveState}
-        >
-          {#if saving}
-            <Spinner size="4" class="mr-2" />
-          {:else}
-            <SaveOutline class="w-4 h-4 mr-2" />
+    <div class="space-y-4">
+      <div class="flex items-center gap-4">
+        <div class="flex-1">
+          <label for="projectName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Nom du projet
+          </label>
+          <Input
+            id="projectName"
+            bind:value={projectName}
+            placeholder="Ex: Système de gestion des commandes"
+            class="text-lg"
+          />
+        </div>
+        <div class="flex items-center gap-2 pt-6">
+          <Button
+            color="light"
+            size="sm"
+            disabled={!projectName.trim() || saving}
+            onclick={saveState}
+          >
+            {#if saving}
+              <Spinner size="4" class="mr-2" />
+            {:else}
+              <SaveOutline class="w-4 h-4 mr-2" />
+            {/if}
+            Sauvegarder
+          </Button>
+          {#if saveStatus}
+            <span class="text-sm text-green-600 dark:text-green-400">
+              {saveStatus}
+            </span>
           {/if}
-          Sauvegarder
-        </Button>
-        {#if saveStatus}
-          <span class="text-sm text-green-600 dark:text-green-400">
-            ✓ Sauvegardé
-          </span>
-        {/if}
+        </div>
       </div>
+      
+      {#if savedProjects.length > 0}
+        <div class="flex items-center gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div class="flex-1">
+            <label for="loadProject" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Charger un projet existant
+            </label>
+            <Select
+              id="loadProject"
+              bind:value={selectedProject}
+              placeholder="Sélectionnez un projet..."
+              items={[{ value: "", name: "-- Sélectionnez --" }, ...savedProjects.map(p => ({ value: p, name: p }))]}
+            />
+          </div>
+          <div class="pt-6">
+            <Button
+              color="blue"
+              size="sm"
+              disabled={!selectedProject || loading}
+              onclick={loadState}
+            >
+              {#if loading}
+                <Spinner size="4" class="mr-2" />
+              {:else}
+                <FolderOpenOutline class="w-4 h-4 mr-2" />
+              {/if}
+              Charger
+            </Button>
+          </div>
+        </div>
+      {/if}
     </div>
   </Card>
 
