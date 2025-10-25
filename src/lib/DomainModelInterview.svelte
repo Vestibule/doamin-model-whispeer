@@ -44,7 +44,12 @@
   async function saveAndNext() {
     if (!canGoNext) return;
 
-    // Save the current answer
+    // Find if we already have an answer for this question (update case)
+    const existingIndex = interviewState.answers.findIndex(
+      a => a.sectionId === currentSection.id && 
+           a.questionIndex === interviewState.currentQuestionIndex
+    );
+
     const answer: UserAnswer = {
       sectionId: currentSection.id,
       questionIndex: interviewState.currentQuestionIndex,
@@ -53,7 +58,13 @@
       timestamp: new Date()
     };
     
-    interviewState.answers.push(answer);
+    if (existingIndex >= 0) {
+      // Update existing answer
+      interviewState.answers[existingIndex] = answer;
+    } else {
+      // Add new answer
+      interviewState.answers.push(answer);
+    }
 
     // Move to next question
     if (interviewState.currentQuestionIndex < currentSection.questions.length - 1) {
@@ -75,7 +86,12 @@
       }
     }
 
-    currentAnswer = "";
+    // Load the answer for the new question if it exists
+    const nextAnswer = interviewState.answers.find(
+      a => a.sectionId === currentSection.id && 
+           a.questionIndex === interviewState.currentQuestionIndex
+    );
+    currentAnswer = nextAnswer ? nextAnswer.answer : "";
   }
 
   async function processSectionWithLLM() {
@@ -127,6 +143,28 @@
   function goToPrevious() {
     if (!canGoPrevious) return;
 
+    // Save current answer before moving
+    if (currentAnswer.trim().length > 0) {
+      const existingIndex = interviewState.answers.findIndex(
+        a => a.sectionId === currentSection.id && 
+             a.questionIndex === interviewState.currentQuestionIndex
+      );
+
+      const answer: UserAnswer = {
+        sectionId: currentSection.id,
+        questionIndex: interviewState.currentQuestionIndex,
+        question: currentQuestion,
+        answer: currentAnswer,
+        timestamp: new Date()
+      };
+      
+      if (existingIndex >= 0) {
+        interviewState.answers[existingIndex] = answer;
+      } else {
+        interviewState.answers.push(answer);
+      }
+    }
+
     if (interviewState.currentQuestionIndex > 0) {
       interviewState.currentQuestionIndex--;
     } else if (interviewState.currentSection > 0) {
@@ -139,15 +177,41 @@
       a => a.sectionId === currentSection.id && 
            a.questionIndex === interviewState.currentQuestionIndex
     );
-    if (previousAnswer) {
-      currentAnswer = previousAnswer.answer;
-    }
+    currentAnswer = previousAnswer ? previousAnswer.answer : "";
   }
 
   function jumpToSection(sectionIndex: number) {
+    // Save current answer before jumping
+    if (currentAnswer.trim().length > 0) {
+      const existingIndex = interviewState.answers.findIndex(
+        a => a.sectionId === currentSection.id && 
+             a.questionIndex === interviewState.currentQuestionIndex
+      );
+
+      const answer: UserAnswer = {
+        sectionId: currentSection.id,
+        questionIndex: interviewState.currentQuestionIndex,
+        question: currentQuestion,
+        answer: currentAnswer,
+        timestamp: new Date()
+      };
+      
+      if (existingIndex >= 0) {
+        interviewState.answers[existingIndex] = answer;
+      } else {
+        interviewState.answers.push(answer);
+      }
+    }
+
     interviewState.currentSection = sectionIndex;
     interviewState.currentQuestionIndex = 0;
-    currentAnswer = "";
+    
+    // Load the answer for the new section's first question if it exists
+    const targetAnswer = interviewState.answers.find(
+      a => a.sectionId === sections[sectionIndex].id && 
+           a.questionIndex === 0
+    );
+    currentAnswer = targetAnswer ? targetAnswer.answer : "";
   }
 </script>
 
