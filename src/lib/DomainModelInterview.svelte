@@ -230,7 +230,7 @@
     }
   }
 
-  function goToPrevious() {
+  async function goToPrevious() {
     if (!canGoPrevious) return;
 
     // Save current answer before moving
@@ -273,7 +273,7 @@
     await saveState();
   }
 
-  function jumpToSection(sectionIndex: number) {
+  async function jumpToSection(sectionIndex: number) {
     // Save current answer before jumping
     if (currentAnswer.trim().length > 0) {
       const existingIndex = interviewState.answers.findIndex(
@@ -307,7 +307,7 @@
     currentAnswer = targetAnswer ? targetAnswer.answer : "";
 
     // Auto-save state
-    saveState();
+    await saveState();
   }
 </script>
 
