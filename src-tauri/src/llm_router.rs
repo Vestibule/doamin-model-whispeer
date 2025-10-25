@@ -115,6 +115,24 @@ impl LlmRouter {
         }
     }
 
+    /// Generate free-form text response (for interview processing)
+    pub async fn generate_text(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String> {
+        match &self.provider {
+            LlmProvider::Ollama { base_url } => {
+                self.generate_text_ollama(base_url, system_prompt, user_prompt)
+                    .await
+            }
+            LlmProvider::External { api_key, endpoint } => {
+                self.generate_text_external(endpoint, api_key, system_prompt, user_prompt)
+                    .await
+            }
+        }
+    }
+
     /// Generate tool calls using Ollama local API
     async fn generate_with_ollama(
         &self,
@@ -307,6 +325,90 @@ impl LlmRouter {
             .context("Failed to parse DomainModel from external provider response")?;
 
         Ok(domain_model)
+    }
+
+    /// Generate text using Ollama
+    async fn generate_text_ollama(
+        &self,
+        base_url: &str,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String> {
+        let url = format!("{}/api/generate", base_url);
+        let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "domain-model-mistral".to_string());
+        
+        let request_body = json!({
+            "model": model,
+            "prompt": format!("{}\n\nUser: {}", system_prompt, user_prompt),
+            "stream": false
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to Ollama")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Ollama API error: {}", response.status());
+        }
+
+        let ollama_response: OllamaResponse = response
+            .json()
+            .await
+            .context("Failed to parse Ollama response")?;
+
+        Ok(ollama_response.response)
+    }
+
+    /// Generate text using external provider
+    async fn generate_text_external(
+        &self,
+        endpoint: &str,
+        api_key: &str,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String> {
+        let request_body = json!({
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.7
+        });
+
+        let response = self
+            .client
+            .post(endpoint)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to external provider")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("External API error {}: {}", status, error_text);
+        }
+
+        let response_json: Value = response
+            .json()
+            .await
+            .context("Failed to parse external provider response")?;
+
+        let content = response_json
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .context("Failed to extract content from external provider response")?;
+
+        Ok(content.to_string())
     }
 }
 

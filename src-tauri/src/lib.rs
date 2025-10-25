@@ -5,6 +5,7 @@ pub mod llm_router;
 pub mod mcp_client;
 pub mod speech_to_text;
 pub mod recording_manager;
+pub mod interview;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -187,6 +188,50 @@ async fn set_audio_device(
     Ok(format!("Audio device set to: {}", device_name))
 }
 
+#[tauri::command]
+async fn process_interview_section(
+    section: interview::InterviewSection,
+) -> Result<interview::SectionCanvasResult, String> {
+    use crate::interview::InterviewProcessor;
+
+    log::info!("[Interview] Processing section: {}", section.section_title);
+    
+    let processor = InterviewProcessor::new()
+        .map_err(|e| {
+            log::error!("[Interview] Failed to initialize processor: {}", e);
+            format!("Failed to initialize interview processor: {}", e)
+        })?;
+    
+    processor.process_section(section)
+        .await
+        .map_err(|e| {
+            log::error!("[Interview] Failed to process section: {}", e);
+            format!("Failed to process section: {}", e)
+        })
+}
+
+#[tauri::command]
+async fn generate_full_canvas(
+    sections: Vec<interview::SectionCanvasResult>,
+) -> Result<interview::FullCanvasResult, String> {
+    use crate::interview::InterviewProcessor;
+
+    log::info!("[Interview] Generating full canvas from {} sections", sections.len());
+    
+    let processor = InterviewProcessor::new()
+        .map_err(|e| {
+            log::error!("[Interview] Failed to initialize processor: {}", e);
+            format!("Failed to initialize interview processor: {}", e)
+        })?;
+    
+    processor.generate_full_canvas(sections)
+        .await
+        .map_err(|e| {
+            log::error!("[Interview] Failed to generate canvas: {}", e);
+            format!("Failed to generate canvas: {}", e)
+        })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -257,7 +302,9 @@ pub fn run() {
             stop_recording,
             transcribe_audio,
             list_audio_devices,
-            set_audio_device
+            set_audio_device,
+            process_interview_section,
+            generate_full_canvas
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

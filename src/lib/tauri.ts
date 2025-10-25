@@ -95,6 +95,30 @@ export interface AudioDevice {
   is_default: boolean;
 }
 
+// Interview types
+export interface InterviewUserAnswer {
+  section_id: number;
+  question_index: number;
+  question: string;
+  answer: string;
+}
+
+export interface InterviewSection {
+  section_id: number;
+  section_title: string;
+  answers: InterviewUserAnswer[];
+}
+
+export interface SectionCanvasResult {
+  section_id: number;
+  section_title: string;
+  canvas_content: string;
+}
+
+export interface FullCanvasResult {
+  markdown: string;
+}
+
 /**
  * Orchestrate the entire flow: transcript -> domain model -> markdown + mermaid
  * @param transcript - The input transcript to process
@@ -144,4 +168,26 @@ export async function listAudioDevices(): Promise<AudioDevice[]> {
  */
 export async function setAudioDevice(deviceName: string): Promise<string> {
   return invoke<string>("set_audio_device", { deviceName });
+}
+
+/**
+ * Process interview section answers through LLM to generate canvas content
+ * @param section - Interview section with user answers
+ * @returns Canvas content for this section
+ */
+export async function processInterviewSection(
+  section: InterviewSection
+): Promise<SectionCanvasResult> {
+  return invoke<SectionCanvasResult>("process_interview_section", { section });
+}
+
+/**
+ * Generate the complete canvas markdown from all processed sections
+ * @param sections - Array of processed section results
+ * @returns Complete canvas markdown document
+ */
+export async function generateFullCanvas(
+  sections: SectionCanvasResult[]
+): Promise<FullCanvasResult> {
+  return invoke<FullCanvasResult>("generate_full_canvas", { sections });
 }

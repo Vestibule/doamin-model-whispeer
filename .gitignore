@@ -13,6 +13,9 @@ dist
 dist-ssr
 *.local
 
+# Model files (Whisper, etc.)
+models/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
