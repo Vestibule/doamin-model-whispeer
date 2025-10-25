@@ -36,33 +36,57 @@ async fn orchestrate(transcript: String) -> Result<OrchestrateResult, String> {
     use crate::mcp_client::McpClient;
     use std::env;
 
+    log::info!("[Orchestrate] Starting orchestration for transcript: {}", &transcript[..transcript.len().min(100)]);
+
     // 1. Generate domain model from transcript using LLM
+    log::info!("[Orchestrate] Initializing LLM integration...");
     let llm_integration = LlmIntegration::new()
-        .map_err(|e| format!("Failed to initialize LLM: {}", e))?;
+        .map_err(|e| {
+            log::error!("[Orchestrate] Failed to initialize LLM: {}", e);
+            format!("Failed to initialize LLM: {}", e)
+        })?;
+    log::info!("[Orchestrate] LLM integration initialized successfully");
     
+    log::info!("[Orchestrate] Generating domain model from transcript...");
     let model = llm_integration
         .process_request(&transcript)
         .await
-        .map_err(|e| format!("Failed to generate domain model: {}", e))?;
+        .map_err(|e| {
+            log::error!("[Orchestrate] Failed to generate domain model: {}", e);
+            format!("Failed to generate domain model: {}", e)
+        })?;
+    log::info!("[Orchestrate] Domain model generated successfully");
 
     // 2. Get MCP server path from environment
     let mcp_server_path = env::var("MCP_SERVER_PATH")
         .unwrap_or_else(|_| "../mcp/mcp-server/target/release/mcp-server".to_string());
+    log::info!("[Orchestrate] Using MCP server at: {}", mcp_server_path);
     
     let mcp_client = McpClient::new(mcp_server_path);
 
     // 3. Generate Mermaid diagram from model
+    log::info!("[Orchestrate] Generating Mermaid diagram...");
     let mermaid = mcp_client
         .emit_mermaid(model.clone(), Some("er"))
         .await
-        .map_err(|e| format!("Failed to generate mermaid: {}", e))?;
+        .map_err(|e| {
+            log::error!("[Orchestrate] Failed to generate mermaid: {}", e);
+            format!("Failed to generate mermaid: {}", e)
+        })?;
+    log::info!("[Orchestrate] Mermaid diagram generated successfully");
 
     // 4. Generate Markdown documentation from model
+    log::info!("[Orchestrate] Generating Markdown documentation...");
     let markdown = mcp_client
         .emit_markdown(model.clone(), None)
         .await
-        .map_err(|e| format!("Failed to generate markdown: {}", e))?;
+        .map_err(|e| {
+            log::error!("[Orchestrate] Failed to generate markdown: {}", e);
+            format!("Failed to generate markdown: {}", e)
+        })?;
+    log::info!("[Orchestrate] Markdown documentation generated successfully");
 
+    log::info!("[Orchestrate] Orchestration completed successfully");
     Ok(OrchestrateResult {
         markdown,
         mermaid,

@@ -1,0 +1,27 @@
+FROM mistral:7b-instruct
+
+# Temperature: Controls randomness (0.0 = deterministic, 1.0 = very creative)
+PARAMETER temperature 0.7
+
+# Context window: Number of tokens the model can remember
+PARAMETER num_ctx 4096
+
+# Top-p sampling: Probability threshold for token selection
+PARAMETER top_p 0.9
+
+# Top-k sampling: Limits token selection to top k options
+PARAMETER top_k 40
+
+# Repeat penalty: Reduces repetitive responses (1.0 = no penalty)
+PARAMETER repeat_penalty 1.1
+
+# System prompt: Defines the AI's behavior and personality
+SYSTEM """You are a domain modeling expert. Your role is to:
+- Extract domain concepts, entities, and relationships from user descriptions
+- Identify aggregates, value objects, and domain events
+- Suggest bounded contexts and ubiquitous language
+- Apply Domain-Driven Design (DDD) principles
+- Provide structured domain models in clear, concise format
+- Ask clarifying questions when domain boundaries are ambiguous
+
+Be precise, technical, and focused on domain modeling patterns."""

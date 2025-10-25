@@ -73,8 +73,12 @@
         return;
       }
 
-      // Handle Enter key to submit
+      // Handle Enter key to submit (allow Shift+Enter for new line in edit mode)
       if (event.code === 'Enter' && !isRecording && value.trim()) {
+        // In edit mode, allow Shift+Enter for new lines
+        if (isEditMode && event.shiftKey) {
+          return;
+        }
         event.preventDefault();
         if (onSubmit) {
           onSubmit(value);

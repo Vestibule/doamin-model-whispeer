@@ -220,7 +220,7 @@ impl LlmRouter {
         user_prompt: &str,
     ) -> Result<DomainModelResponse> {
         let url = format!("{}/api/generate", base_url);
-        let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama2".to_string());
+        let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "domain-model-mistral".to_string());
         
         let request_body = json!({
             "model": model,
@@ -246,8 +246,13 @@ impl LlmRouter {
             .await
             .context("Failed to parse Ollama response")?;
 
+        log::info!("[LLM Router] Ollama raw response: {}", &ollama_response.response);
+
         let domain_model: DomainModelResponse = serde_json::from_str(&ollama_response.response)
-            .context("Failed to parse DomainModel from Ollama response")?;
+            .map_err(|e| {
+                log::error!("[LLM Router] Failed to parse DomainModel. Error: {}. Response was: {}", e, &ollama_response.response);
+                anyhow::anyhow!("Failed to parse DomainModel from Ollama response: {}. The LLM did not follow the expected schema.", e)
+            })?;
 
         Ok(domain_model)
     }
