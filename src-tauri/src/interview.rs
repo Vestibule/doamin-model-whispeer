@@ -47,6 +47,9 @@ impl InterviewProcessor {
 
     /// Process answers for a specific section and generate canvas content
     pub async fn process_section(&self, section: InterviewSection) -> Result<SectionCanvasResult> {
+        log::info!("[Interview] Starting to process section: {} (ID: {})", section.section_title, section.section_id);
+        log::info!("[Interview] Section has {} answers", section.answers.len());
+        
         let system_prompt = self.get_system_prompt_for_section(&section.section_title);
         
         // Format the Q&A into a structured prompt
@@ -55,12 +58,19 @@ impl InterviewProcessor {
             qa_text.push_str(&format!("Q: {}\nR: {}\n\n", answer.question, answer.answer));
         }
 
-        // Ask LLM to transform answers into canvas markdown format
-        let canvas_content = self
-            .llm_router
-            .generate_text(&system_prompt, &qa_text)
-            .await
-            .context("Failed to generate canvas content from answers")?;
+        log::info!("[Interview] Sending request to LLM for section: {}", section.section_title);
+        
+        // Ask LLM to transform answers into canvas markdown format with timeout
+        let canvas_content = tokio::time::timeout(
+            std::time::Duration::from_secs(120), // 2 minutes timeout
+            self.llm_router.generate_text(&system_prompt, &qa_text)
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("LLM request timed out after 120 seconds"))?
+        .context("Failed to generate canvas content from answers")?;
+
+        log::info!("[Interview] Successfully generated canvas content for section: {}", section.section_title);
+        log::info!("[Interview] Canvas content length: {} characters", canvas_content.len());
 
         Ok(SectionCanvasResult {
             section_id: section.section_id,

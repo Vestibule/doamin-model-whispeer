@@ -342,12 +342,20 @@ impl LlmRouter {
         let url = format!("{}/api/generate", base_url);
         let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "domain-model-mistral".to_string());
         
+        log::info!("[LLM Router] Generating text with Ollama");
+        log::info!("[LLM Router] URL: {}", url);
+        log::info!("[LLM Router] Model: {}", model);
+        log::info!("[LLM Router] System prompt length: {} chars", system_prompt.len());
+        log::info!("[LLM Router] User prompt length: {} chars", user_prompt.len());
+        
         let request_body = json!({
             "model": model,
             "prompt": format!("{}\n\nUser: {}", system_prompt, user_prompt),
             "stream": false
         });
 
+        log::info!("[LLM Router] Sending POST request to Ollama...");
+        
         let response = self
             .client
             .post(&url)
@@ -356,15 +364,24 @@ impl LlmRouter {
             .await
             .context("Failed to send request to Ollama")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama API error: {}", response.status());
+        let status = response.status();
+        log::info!("[LLM Router] Received response with status: {}", status);
+        
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            log::error!("[LLM Router] Ollama API error: {} - {}", status, error_text);
+            anyhow::bail!("Ollama API error: {} - {}", status, error_text);
         }
 
+        log::info!("[LLM Router] Parsing Ollama response...");
+        
         let ollama_response: OllamaResponse = response
             .json()
             .await
             .context("Failed to parse Ollama response")?;
 
+        log::info!("[LLM Router] Successfully generated text. Response length: {} chars", ollama_response.response.len());
+        
         Ok(ollama_response.response)
     }
 
