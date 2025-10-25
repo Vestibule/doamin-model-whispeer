@@ -4,7 +4,7 @@
   import { INTERVIEW_SECTIONS, type InterviewState, type UserAnswer } from './types/interview';
   import AudioInput from './AudioInput.svelte';
   import CanvasViewer from './CanvasViewer.svelte';
-  import { processInterviewSection, generateFullCanvas, saveInterviewState, loadInterviewState, listSavedProjects, type InterviewSection as TauriInterviewSection, type SectionCanvasResult } from './tauri';
+  import { processInterviewSection, generateFullCanvas, saveInterviewState, loadInterviewState, listSavedProjects, saveCanvasMarkdown, type InterviewSection as TauriInterviewSection, type SectionCanvasResult } from './tauri';
   import { onMount } from 'svelte';
 
   let projectName = $state("");
@@ -26,7 +26,9 @@
   let processing = $state(false);
   let generatingCanvas = $state(false);
   let saving = $state(false);
+  let savingCanvas = $state(false);
   let saveStatus = $state("");
+  let canvasSaveStatus = $state("");
   let error = $state("");
 
   // Computed values
@@ -230,6 +232,57 @@
     }
   }
 
+  async function saveCanvasPreview() {
+    if (!projectName.trim() || processedSections.length === 0) return;
+    
+    savingCanvas = true;
+    canvasSaveStatus = "";
+    error = "";
+    
+    try {
+      // Build partial canvas markdown from processed sections
+      let markdown = "# Canvas — Rich Domain Model (DDD)\n\n";
+      markdown += "> Objectif : cadrer un domaine avec un modèle riche (entités porteuses de logique, invariants explicites, langage ubiquiste). Remplis court et concret.\n\n";
+      markdown += "---\n\n";
+      
+      for (const section of processedSections) {
+        markdown += `## ${section.section_title}\n\n`;
+        markdown += section.canvas_content;
+        markdown += "\n\n";
+      }
+      
+      const message = await saveCanvasMarkdown(projectName, markdown);
+      canvasSaveStatus = "✓ Aperçu du canvas sauvegardé";
+      
+      // Clear status after 3 seconds
+      setTimeout(() => { canvasSaveStatus = ""; }, 3000);
+    } catch (e) {
+      error = `Erreur lors de la sauvegarde du canvas: ${String(e)}`;
+    } finally {
+      savingCanvas = false;
+    }
+  }
+
+  async function saveFullCanvas() {
+    if (!projectName.trim() || !fullCanvasMarkdown) return;
+    
+    savingCanvas = true;
+    canvasSaveStatus = "";
+    error = "";
+    
+    try {
+      const message = await saveCanvasMarkdown(projectName, fullCanvasMarkdown);
+      canvasSaveStatus = "✓ Canvas complet sauvegardé";
+      
+      // Clear status after 3 seconds
+      setTimeout(() => { canvasSaveStatus = ""; }, 3000);
+    } catch (e) {
+      error = `Erreur lors de la sauvegarde du canvas: ${String(e)}`;
+    } finally {
+      savingCanvas = false;
+    }
+  }
+
   async function goToPrevious() {
     if (!canGoPrevious) return;
 
@@ -389,9 +442,29 @@
     <div class="flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden flex flex-col">
       <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-none">
         <Heading tag="h2">Canvas Domain Model Complet</Heading>
-        <Button color="light" size="sm" onclick={() => { fullCanvasMarkdown = ""; interviewState.isComplete = false; }}>
-          Retour à l'interview
-        </Button>
+        <div class="flex items-center gap-2">
+          <Button
+            color="blue"
+            size="sm"
+            disabled={!projectName.trim() || savingCanvas}
+            onclick={saveFullCanvas}
+          >
+            {#if savingCanvas}
+              <Spinner size="4" class="mr-2" />
+            {:else}
+              <FloppyDiskOutline class="w-4 h-4 mr-2" />
+            {/if}
+            Sauvegarder Canvas
+          </Button>
+          {#if canvasSaveStatus}
+            <span class="text-sm text-green-600 dark:text-green-400">
+              {canvasSaveStatus}
+            </span>
+          {/if}
+          <Button color="light" size="sm" onclick={() => { fullCanvasMarkdown = ""; interviewState.isComplete = false; }}>
+            Retour à l'interview
+          </Button>
+        </div>
       </div>
       <div class="flex-1 overflow-y-auto p-6">
         <div class="prose dark:prose-invert max-w-none">
@@ -566,7 +639,27 @@
   {#if processedSections.length > 0 && !interviewState.isComplete}
     <div class="w-96 flex-none flex flex-col min-h-0">
       <Card class="flex-1 flex flex-col min-h-0">
-        <Heading tag="h3" class="mb-4">Aperçu du Canvas</Heading>
+        <div class="flex items-center justify-between mb-4">
+          <Heading tag="h3">Aperçu du Canvas</Heading>
+          <Button
+            color="light"
+            size="xs"
+            disabled={!projectName.trim() || savingCanvas}
+            onclick={saveCanvasPreview}
+          >
+            {#if savingCanvas}
+              <Spinner size="3" class="mr-1" />
+            {:else}
+              <FloppyDiskOutline class="w-3 h-3 mr-1" />
+            {/if}
+            Sauvegarder
+          </Button>
+        </div>
+        {#if canvasSaveStatus}
+          <div class="mb-3 text-xs text-green-600 dark:text-green-400">
+            {canvasSaveStatus}
+          </div>
+        {/if}
         <div class="flex-1 overflow-y-auto space-y-4 text-sm">
           {#each processedSections as section}
             <div class="border-l-4 border-blue-500 pl-3">

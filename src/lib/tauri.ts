@@ -223,3 +223,16 @@ export async function loadInterviewState(
 export async function listSavedProjects(): Promise<string[]> {
   return invoke<string[]>("list_saved_projects");
 }
+
+/**
+ * Save canvas markdown to a file
+ * @param projectName - Name of the project
+ * @param markdown - Canvas markdown content
+ * @returns Success message with file path
+ */
+export async function saveCanvasMarkdown(
+  projectName: string,
+  markdown: string
+): Promise<string> {
+  return invoke<string>("save_canvas_markdown", { projectName, markdown });
+}

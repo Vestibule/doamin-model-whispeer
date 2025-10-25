@@ -380,6 +380,41 @@ async fn generate_full_canvas(
         })
 }
 
+#[tauri::command]
+async fn save_canvas_markdown(
+    app: tauri::AppHandle,
+    project_name: String,
+    markdown: String,
+) -> Result<String, String> {
+    use std::fs;
+
+    log::info!("[Interview] Saving canvas markdown for project: {}", project_name);
+
+    // Get app data directory
+    let app_data_dir = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+
+    // Create filename from project name (sanitized)
+    let sanitized_name = project_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    
+    let file_path = app_data_dir.join(format!("{}_canvas.md", sanitized_name));
+
+    // Write the markdown file
+    fs::write(&file_path, markdown)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    log::info!("[Interview] Canvas saved to: {:?}", file_path);
+    Ok(format!("Canvas sauvegardé dans {:?}", file_path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -637,7 +672,8 @@ pub fn run() {
             load_interview_state,
             list_saved_projects,
             process_interview_section,
-            generate_full_canvas
+            generate_full_canvas,
+            save_canvas_markdown
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
